@@ -1,0 +1,49 @@
+/* Экран игры */
+.game { position: fixed; inset: 0; background: #080b0a; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; z-index: 5; }
+.game-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.game-vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 4, 3, .55) 100%); }
+
+.hud-top { position: absolute; left: 0; right: 0; top: 0; display: flex; align-items: center; gap: 10px; padding: calc(10px + env(safe-area-inset-top, 0px)) calc(12px + env(safe-area-inset-right, 0px)) 0 calc(12px + env(safe-area-inset-left, 0px)); pointer-events: none; }
+.hud-top .hp { display: flex; align-items: center; gap: 8px; width: min(220px, 42vw); }
+.hud-top .hp-bar { flex: 1; height: 10px; background: rgba(0, 0, 0, .55); border: 1px solid rgba(255, 255, 255, .15); }
+.hud-top .hp-bar i { background: #d9503f; }
+.hud-top .hp span { font: 700 13px var(--f-head); text-shadow: 0 1px 3px #000; min-width: 28px; }
+.zone { margin: 0 auto; padding: 3px 10px; font-size: 11.5px; background: rgba(0, 0, 0, .5); border-left: 3px solid var(--rc, var(--r-grey)); }
+.gbtn { pointer-events: auto; width: 56px; height: 56px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .25); background: rgba(20, 28, 25, .6); color: var(--text); font: 700 22px var(--f-head); backdrop-filter: blur(3px); }
+.gbtn.small { width: 40px; height: 40px; font-size: 14px; }
+.gbtn:active { background: rgba(227, 169, 58, .35); }
+
+.hud-weapon { position: absolute; left: calc(12px + env(safe-area-inset-left, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); width: min(230px, 48vw); padding: 8px 10px; background: rgba(8, 12, 10, .62); border-left: 3px solid var(--accent); pointer-events: none; display: grid; gap: 4px; }
+.wrow { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.wrow b { font: 600 12.5px var(--f-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wrow .ammo { font: 700 16px var(--f-head); color: var(--accent); white-space: nowrap; }
+.hud-weapon .bar { height: 4px; }
+.hud-weapon .dur-bar i { background: #8fa79a; }
+.hud-weapon .reload-bar i { background: var(--accent); }
+.hud-weapon small { color: var(--muted); min-height: 15px; }
+.hud-weapon small.bad { color: #ff9c8c; }
+
+.prompt { position: absolute; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); padding: 12px 20px; min-height: 48px; border: 0; background: var(--accent); color: var(--accent-ink); font: 700 14px var(--f-head); clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px)); }
+.gtoast { position: absolute; left: 50%; top: calc(62px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); max-width: 90vw; padding: 8px 14px; background: rgba(20, 28, 25, .9); border-left: 3px solid var(--accent); font-size: 13px; pointer-events: none; text-align: center; }
+
+/* Сенсорное управление: левая половина — движение, правая — прицел и стрельба */
+.zone-move, .zone-aim { position: absolute; top: 64px; bottom: 0; touch-action: none; }
+.zone-move { left: 0; width: 50%; }
+.zone-aim { right: 0; width: 50%; }
+.stick { position: absolute; width: 116px; height: 116px; margin: -58px 0 0 -58px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .28); background: rgba(255, 255, 255, .06); pointer-events: none; }
+.stick i { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(255, 255, 255, .35); }
+.game.touch .gbtn:not(.small) { position: absolute; right: calc(14px + env(safe-area-inset-right, 0px)); }
+.game.touch .gbtn:nth-of-type(2) { bottom: calc(200px + env(safe-area-inset-bottom, 0px)); }
+.game.touch .gbtn:nth-of-type(3) { bottom: calc(270px + env(safe-area-inset-bottom, 0px)); }
+.game.touch .hud-weapon { left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+.game.touch .prompt { bottom: calc(90px + env(safe-area-inset-bottom, 0px)); }
+
+/* Пауза и инструменты разработчика */
+.pause-layer { position: absolute; inset: 0; display: grid; place-content: center; gap: 10px; background: rgba(4, 7, 6, .78); padding: 20px; text-align: center; z-index: 3; pointer-events: auto; }
+.pause-layer[hidden] { display: none; }
+.pause-layer h2 { font-size: 22px; margin-bottom: 6px; }
+.pause-layer .btn { min-width: 240px; }
+.pause-layer p { max-width: 280px; margin: 0 auto; color: var(--muted); font-size: 12.5px; }
+.devbox { position: absolute; left: calc(12px + env(safe-area-inset-left, 0px)); top: 56px; display: flex; flex-direction: column; gap: 4px; z-index: 2; }
+.devbox button { pointer-events: auto; font-size: 11px; padding: 4px 8px; background: rgba(20, 28, 25, .75); border: 1px solid var(--line2); }
+.game.touch .devbox { top: 112px; }
