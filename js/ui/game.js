@@ -9,6 +9,8 @@ export function buildGameUI({ touch, dev }) {
   const hpFill = h('i'); const hpText = h('span');
   const zoneChip = h('span', { class: 'zone' });
   const pauseBtn = h('button', { class: 'gbtn small', 'aria-label': 'Пауза' }, 'II');
+  const btnInv = h('button', { class: 'gbtn small', 'aria-label': 'Инвентарь' }, '🎒');
+  const btnMap = h('button', { class: 'gbtn small', 'aria-label': 'Карта' }, '🗺');
   const wName = h('b'); const wAmmo = h('span', { class: 'ammo' }); const wState = h('small');
   const durFill = h('i'); const reloadFill = h('i');
   const prompt = h('button', { class: 'prompt', hidden: true });
@@ -16,7 +18,7 @@ export function buildGameUI({ touch, dev }) {
 
   const top = h('div', { class: 'hud-top' },
     h('div', { class: 'hp' }, h('div', { class: 'bar hp-bar' }, hpFill), hpText),
-    zoneChip, pauseBtn);
+    zoneChip, h('div', { class: 'hud-top-btns' }, btnInv, btnMap, pauseBtn));
   const weapon = h('div', { class: 'hud-weapon' },
     h('div', { class: 'wrow' }, wName, wAmmo),
     h('div', { class: 'bar dur-bar' }, durFill),
@@ -28,8 +30,9 @@ export function buildGameUI({ touch, dev }) {
   const zoneAim = touch ? h('div', { class: 'zone-aim' }) : null;
   const mkStick = () => h('div', { class: 'stick', hidden: true }, h('i'));
   const stickMove = mkStick(); const stickAim = mkStick();
-  const btnReload = touch ? h('button', { class: 'gbtn' }, '⟳') : null;
-  const btnSwap = touch ? h('button', { class: 'gbtn' }, '⇄') : null;
+  const btnFire = touch ? h('button', { class: 'gbtn fire', 'aria-label': 'Огонь' }, '●') : null;
+  const btnReload = touch ? h('button', { class: 'gbtn reload', 'aria-label': 'Перезарядка' }, '⟳') : null;
+  const btnSwap = touch ? h('button', { class: 'gbtn swap', 'aria-label': 'Смена оружия' }, '⇄') : null;
 
   // пауза
   const pauseLayer = h('div', { class: 'pause-layer', hidden: true });
@@ -37,15 +40,34 @@ export function buildGameUI({ touch, dev }) {
   // инструменты разработчика
   const devBox = dev ? h('div', { class: 'devbox' }) : null;
 
+  // полноэкранный оверлей (инвентарь/настройки/карта) поверх идущей игры
+  const overlayHead = h('h2', null);
+  const overlayBody = h('div', { class: 'game-overlay-body' });
+  const overlayClose = h('button', { class: 'btn ghost small' }, 'Закрыть');
+  const overlay = h('div', { class: 'game-overlay', hidden: true },
+    h('div', { class: 'game-overlay-head' }, overlayHead, overlayClose),
+    overlayBody);
+
   const el = h('div', { class: 'game' + (touch ? ' touch' : '') },
     canvas, h('div', { class: 'game-vignette' }),
     zoneMove, zoneAim, stickMove, stickAim,
-    top, weapon, prompt, btnReload, btnSwap, devBox, toastEl, pauseLayer);
+    top, weapon, prompt, btnFire, btnReload, btnSwap, devBox, toastEl, pauseLayer, overlay);
 
   let toastT = null;
   return {
-    el, canvas, pauseBtn, prompt, btnReload, btnSwap, devBox, pauseLayer,
+    el, canvas, pauseBtn, btnInv, btnMap, prompt, btnFire, btnReload, btnSwap, devBox, pauseLayer,
     zones: { move: zoneMove, aim: zoneAim },
+
+    openOverlay(title, render, onClose) {
+      overlayHead.textContent = title;
+      overlayBody.replaceChildren();
+      render(overlayBody);
+      overlay.hidden = false;
+      overlayClose.onclick = () => { overlay.hidden = true; onClose?.(); };
+    },
+    closeOverlay() { overlay.hidden = true; },
+    redrawOverlay(render) { overlayBody.replaceChildren(); render(overlayBody); },
+    get overlayOpen() { return !overlay.hidden; },
 
     setStick(kind, s) {
       const st = kind === 'move' ? stickMove : stickAim;

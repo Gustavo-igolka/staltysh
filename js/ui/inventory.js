@@ -5,7 +5,7 @@ import { getGrid, totalWeight, moveToInventory, moveToStash, equip, unequip } fr
 import { fmtKg } from '../core/util.js';
 import { ARMOR_CLASSES } from '../data/player.js';
 import { computeStats, blockedZoneLevel } from '../game/stats.js';
-import { section, chips, emptyState, rarityKey, rarityCss, rarityName, statItems, tierPips, refresh, durLabel, isBroken, hasDurability } from './common.js';
+import { section, chips, emptyState, rarityKey, rarityCss, rarityName, statItems, tierPips, refresh, durLabel, isBroken, hasDurability, ownerIcon, ownerTitle } from './common.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { toast } from './toast.js';
 
@@ -42,7 +42,8 @@ export function renderInventory(root) {
           class: 'icell',
           style: { gridColumn: `${it.x + 1} / span ${d.w}`, gridRow: `${it.y + 1} / span ${d.h}`, '--rc': rarityCss(rarityKey(it)) },
           onclick: () => openItemSheet(it, 'inventory'),
-        }, h('span', null, d.name), it.count > 1 ? h('em', null, `×${it.count}`) : null);
+        }, h('span', null, d.name), it.count > 1 ? h('em', null, `×${it.count}`) : null,
+          ownerIcon(d) ? h('i', { class: 'owner-icon inline', title: ownerTitle(d) }, ownerIcon(d)) : null);
       })),
     s.inventory.length ? null : h('p', { class: 'muted' }, 'Инвентарь пуст. Сюда попадает всё, что ты берёшь с собой в открытый мир.'));
 
@@ -56,7 +57,7 @@ export function renderInventory(root) {
       ? h('div', { class: 'stash' }, items.map((it) => {
           const d = getItem(it.id);
           return h('button', { class: 'tile', style: { '--rc': rarityCss(rarityKey(it)) }, onclick: () => openItemSheet(it, 'stash') },
-            h('b', null, d.name),
+            h('b', null, d.name, ownerIcon(d) ? h('i', { class: 'owner-icon inline', title: ownerTitle(d) }, ownerIcon(d)) : null),
             h('small', null, TYPE_NAMES[d.type] + (it.count > 1 ? ` ×${it.count}` : '') + (isBroken(it) ? ' · сломано' : '')));
         }))
       : emptyState('Здесь пусто', 'Всё, что ты купишь или найдёшь, хранится на складе бункера.'));
@@ -120,7 +121,8 @@ function openItemSheet(it, where, slotKey) {
 
   openSheet(d.name, h('div', { class: 'item-sheet' },
     h('p', { class: 'kind', style: { '--rc': rarityCss(key) } },
-      `${TYPE_NAMES[d.type]}${d.armorClass ? ` · ${ARMOR_CLASSES[d.armorClass]}` : ''}${key !== 'grey' || d.type === 'resource' || d.slot ? ` · ${rarityName(key)}` : ''}`),
+      `${TYPE_NAMES[d.type]}${d.armorClass ? ` · ${ARMOR_CLASSES[d.armorClass]}` : ''}${key !== 'grey' || d.type === 'resource' || d.slot ? ` · ${rarityName(key)}` : ''}`,
+      ownerIcon(d) ? h('i', { class: 'owner-icon inline', title: ownerTitle(d) }, ' ' + ownerIcon(d)) : null),
     d.desc ? h('p', null, d.desc) : null,
     statItems(d).length
       ? h('ul', { class: 'statlist' }, statItems(d).map(([l, v]) => h('li', null, h('span', null, l), h('b', null, v))))

@@ -41,6 +41,19 @@ export function statItems(d) {
 export const durLabel = (it) => (hasDurability(it) ? `${Math.round(durCur(it))} / ${durMax(it)}` : '');
 export { isBroken, hasDurability };
 
+// Значок принадлежности предмета: щит — персональный передаваемый (с аукциона/донатного ящика, пока не реализовано),
+// замок — персональный непередаваемый (сделано из бартера, с боевого пропуска, сюжетное). Без значка — не персональный.
+export function ownerIcon(d) {
+  if (d.owner === 'transferable') return '🛡';
+  if (d.owner === 'locked') return '🔒';
+  return null;
+}
+export function ownerTitle(d) {
+  if (d.owner === 'transferable') return 'Личная вещь: можно передать другому игроку';
+  if (d.owner === 'locked') return 'Личная вещь: передать нельзя';
+  return 'Не личная вещь: можно передать, теряется при смерти';
+}
+
 // Ряд из 7 отметок: закрашены ступени до текущей
 export function tierPips(tier = -1) {
   return h('span', { class: 'pips', title: 'Ступени улучшения' },

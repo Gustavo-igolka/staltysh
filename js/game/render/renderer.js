@@ -114,11 +114,52 @@ export function createRenderer(canvas, map) {
     }
 
     drawObjects(world, opts);
+    drawCrates(world);
     for (const d of world.dummies) drawDummy(d);
+    for (const n of world.npcs) drawNpc(n);
+    if (world.siege?.active) drawInstall(world.siege);
     drawPlayer(world, p);
     drawBullets(world);
     drawFloaters(world);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function drawCrates(world) {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const s of world.spots) {
+      if (!s.crate) continue;
+      ctx.fillStyle = '#4a3c22'; ctx.fillRect(s.x - 12, s.y - 10, 24, 20);
+      ctx.strokeStyle = '#e3a93a'; ctx.lineWidth = 2; ctx.strokeRect(s.x - 12, s.y - 10, 24, 20);
+      ctx.fillStyle = '#e3a93a'; ctx.font = '700 13px sans-serif'; ctx.fillText('$', s.x, s.y + 1);
+    }
+  }
+
+  function drawInstall(s) {
+    ctx.fillStyle = s.hp > 0 ? '#5f7c8c' : '#3a3a3a';
+    ctx.fillRect(s.x - 14, s.y - 14, 28, 28);
+    ctx.strokeStyle = '#8fd0ff'; ctx.lineWidth = 2; ctx.strokeRect(s.x - 14, s.y - 14, 28, 28);
+    const bw = 40, by = s.y - 26;
+    ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(s.x - bw / 2, by, bw, 5);
+    ctx.fillStyle = '#8fd0ff'; ctx.fillRect(s.x - bw / 2, by, bw * Math.max(0, s.hp / s.maxHp), 5);
+  }
+
+  function drawNpc(n) {
+    if (n.dead) { ctx.globalAlpha = Math.max(0, n.corpseT / 2.5); }
+    const k = ENEMY_KINDS[n.kindId];
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(n.x, n.y + n.r * 0.7, n.r, n.r * 0.5, 0, 0, 7); ctx.fill();
+    if (!n.dead && k.ranged) { // ствол дальнобойного НПС
+      ctx.strokeStyle = '#1b1f1c'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(n.x, n.y); ctx.lineTo(n.x + Math.cos(n.angle) * (n.r + 6), n.y + Math.sin(n.angle) * (n.r + 6)); ctx.stroke(); ctx.lineCap = 'butt';
+    }
+    ctx.fillStyle = n.flash > 0 ? '#ffffff' : k.color;
+    ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, 7); ctx.fill();
+    ctx.strokeStyle = (n.state === 'attack' || n.state === 'chase' || n.siegeTarget) ? 'rgba(220,90,69,.9)' : 'rgba(0,0,0,.5)';
+    ctx.lineWidth = 2; ctx.stroke();
+    if (n.dead) { ctx.globalAlpha = 1; return; }
+    const bw = 28, by = n.y - n.r - 11;
+    ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(n.x - bw / 2, by, bw, 4);
+    ctx.fillStyle = k.mutant ? '#c98a3a' : '#c05a4c'; ctx.fillRect(n.x - bw / 2, by, bw * Math.max(0, n.hp / n.maxHp), 4);
   }
 
   function drawObjects(world, opts) {
@@ -208,8 +249,53 @@ export function createRenderer(canvas, map) {
   const worldToScreen = (x, y) => ({ x: (x - cam.x) * cam.scale, y: (y - cam.y) * cam.scale });
   const zoneRarity = (y) => (map.bands.find((b) => y / TILE >= b.fromY) ?? map.bands[map.bands.length - 1]);
 
+  // ── полная карта (вызывается открытием оверлея по клавише M / кнопке) ──
+  let miniBitmap = null;
+  function miniMap() {
+    if (miniBitmap) return miniBitmap;
+    const cv = document.createElement('canvas');
+    cv.width = map.w; cv.height = map.h;
+    const c = cv.getContext('2d');
+    for (let y = 0; y < map.h; y++) {
+      for (let x = 0; x < map.w; x++) {
+        const t = TILES[map.tiles[y][x]] ?? TILES['.'];
+        c.fillStyle = t.color; c.fillRect(x, y, 1, 1);
+      }
+    }
+    miniBitmap = cv;
+    return cv;
+  }
+
+  function drawFullMap(targetCanvas, world) {
+    const r = targetCanvas.getBoundingClientRect();
+    const dpr2 = Math.min(2, window.devicePixelRatio || 1);
+    targetCanvas.width = Math.round(r.width * dpr2); targetCanvas.height = Math.round(r.height * dpr2);
+    const c = targetCanvas.getContext('2d');
+    c.setTransform(dpr2, 0, 0, dpr2, 0, 0);
+    c.fillStyle = '#080b0a'; c.fillRect(0, 0, r.width, r.height);
+    const scale = Math.min(r.width / map.w, r.height / map.h);
+    const ox = (r.width - map.w * scale) / 2, oy = (r.height - map.h * scale) / 2;
+    c.imageSmoothingEnabled = false;
+    c.drawImage(miniMap(), ox, oy, map.w * scale, map.h * scale);
+
+    const toScreen = (wx, wy) => ({ x: ox + (wx / TILE) * scale, y: oy + (wy / TILE) * scale });
+    if (world.hatch) {
+      const hc = toScreen(world.hatch.x + world.hatch.w / 2, world.hatch.y + world.hatch.h / 2);
+      c.fillStyle = '#e3a93a'; c.beginPath(); c.arc(hc.x, hc.y, 4, 0, 7); c.fill();
+    }
+    for (const s of world.spots) {
+      const sc = toScreen(s.x, s.y);
+      c.fillStyle = s.state === 'cleared' ? 'rgba(140,140,140,.6)' : (s.kind === 'mutant' ? '#c98a3a' : '#c05a4c');
+      c.beginPath(); c.arc(sc.x, sc.y, 3, 0, 7); c.fill();
+    }
+    const p = world.players.p1;
+    const pc = toScreen(p.x, p.y);
+    c.fillStyle = '#8fd0ff'; c.beginPath(); c.arc(pc.x, pc.y, 4, 0, 7); c.fill();
+    c.strokeStyle = 'rgba(143,208,255,.5)'; c.lineWidth = 1.5; c.stroke();
+  }
+
   resize();
-  return { cam, resize, draw, worldToScreen, zoneRarity, dispose() { cache.clear(); } };
+  return { cam, resize, draw, worldToScreen, zoneRarity, drawFullMap, dispose() { cache.clear(); } };
 }
 
 function shadeColor(hex, amt) {

@@ -153,3 +153,5 @@
 .durability { margin: 8px 0; }
 .durability .weight { margin-bottom: 4px; }
 .warn-text { color: #ff9c8c; font-size: 12.5px; margin: 0 0 6px; }
+.owner-icon { font-style: normal; font-size: 11px; opacity: .85; }
+.owner-icon.inline { margin-left: 4px; }

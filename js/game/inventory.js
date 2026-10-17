@@ -164,6 +164,16 @@ export function unequip(state, slot) {
   return { ok: true };
 }
 
+// Смерть в открытом мире: инвентарь вылазки теряется, но персональные вещи (с замком/щитом) —
+// кроме бартерных ресурсов — возвращаются на склад бункера, а не пропадают навсегда.
+export function applyDeathLoss(state) {
+  for (const it of state.inventory) {
+    const d = getItem(it.id);
+    if (d.owner && d.type !== 'resource') addToStash(state, it);
+  }
+  state.inventory = [];
+}
+
 // Патроны в инвентаре вылазки (для перезарядки в бою)
 export const countAmmo = (state, ammoId) =>
   state.inventory.reduce((s, it) => s + (it.id === ammoId ? it.count : 0), 0);

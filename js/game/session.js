@@ -2,15 +2,21 @@
 import { h } from '../core/dom.js';
 import { getState, mutate } from '../core/state.js';
 import { computeStats } from './stats.js';
-import { countAmmo, takeAmmo } from './inventory.js';
+import { countAmmo, takeAmmo, applyDeathLoss, addToInventory } from './inventory.js';
 import { createWorld, step, setPlayerStats, damagePlayer } from './sim/world.js';
+import { startSiege } from './sim/siege.js';
+import { lootCrate } from './sim/spots.js';
 import { createRenderer } from './render/renderer.js';
 import { createInput } from './input.js';
 import { buildGameUI } from '../ui/game.js';
+import { renderInventory } from '../ui/inventory.js';
+import { renderSettings } from '../ui/settings.js';
+import { getItem } from '../data/items.js';
+import { on } from '../core/events.js';
 import { MAPS } from '../data/maps/index.js';
 
 const DT = 1 / 60;
-const NO_EDGES = { reload: false, swap: false, select: null, interact: false };
+const NO_EDGES = { reload: false, swap: false, select: null, interact: false, map: false, inventory: false };
 
 function wantsTouch(mode) {
   if (mode === 'touch') return true;
@@ -44,6 +50,7 @@ export function startGame({ root, mapId = 'swamp', onEnd }) {
   const ui = buildGameUI({ touch, dev });
   root.replaceChildren(ui.el);
   const renderer = createRenderer(ui.canvas, map);
+  world.camera = renderer.cam; // живая ссылка — нужна spots.js, чтобы проверять видимость точки на экране
   const input = createInput({ zones: ui.zones, canvas: ui.canvas, touchMode: touch, playerScreen: () => renderer.worldToScreen(p.x, p.y), onStick: ui.setStick });
 
   let paused = false, ended = false, raf = 0, acc = 0, debugMarkers = false, snap = true;
@@ -67,8 +74,10 @@ export function startGame({ root, mapId = 'swamp', onEnd }) {
     ended = true;
     cancelAnimationFrame(raf);
     commit();
-    if (reason === 'death') mutate((st) => { st.inventory = []; return { ok: true }; }); // при смерти теряется текущий инвентарь
-    input.dispose(); renderer.dispose();
+    // при смерти инвентарь вылазки теряется, но личные непередаваемые вещи (кроме бартерных ресурсов)
+    // возвращаются на склад бункера, а не пропадают навсегда
+    if (reason === 'death') mutate((st) => { applyDeathLoss(st); return { ok: true }; });
+    input.dispose(); renderer.dispose(); offOverlayRefresh?.();
     window.removeEventListener('resize', onResize);
     document.removeEventListener('visibilitychange', onVisibility);
     ui.el.remove();
@@ -83,6 +92,7 @@ export function startGame({ root, mapId = 'swamp', onEnd }) {
     ui.pauseLayer.replaceChildren(
       h('h2', null, 'Пауза'),
       h('button', { class: 'btn primary', onclick: () => setPaused(false) }, 'Продолжить'),
+      h('button', { class: 'btn ghost', onclick: () => { setPaused(false); openMenuOverlay('Настройки', renderSettings); } }, 'Настройки'),
       h('button', { class: 'btn ghost', disabled: !atHatch, onclick: () => end('hatch') }, 'Войти в бункер'),
       atHatch ? null : h('p', null, 'В бункер можно войти только у люка на юге карты.'),
       dev ? h('button', { class: 'btn danger', onclick: () => end('dev') }, 'Выйти (режим разработчика)') : null);
@@ -98,7 +108,49 @@ export function startGame({ root, mapId = 'swamp', onEnd }) {
       else if (e.type === 'jam') ui.toast('Оружие клинит: нужна полная перезарядка');
       else if (e.type === 'weapon_broken') { ui.toast('Оружие сломано'); commit(); }
       else if (e.type === 'armor_broken') { ui.toast('Броня сломана: защиты больше нет'); commit(); setPlayerStats(world, 'p1', computeStats(getState())); }
+      else if (e.type === 'loot_crate') {
+        const spot = world.spots.find((s) => s.id === e.spotId);
+        const items = spot ? lootCrate(world, spot) : [];
+        if (items.length) {
+          mutate((st) => { for (const it of items) addToInventory(st, it); return { ok: true }; });
+          const names = items.map((it) => getItem(it.id).name).join(', ');
+          ui.toast(`Добыча: ${names}`);
+        }
+      } else if (e.type === 'spot_cleared') {
+        ui.toast('Точка зачищена: добыча ждёт в ящике');
+      } else if (e.type === 'siege_end') {
+        const r = e.result;
+        if (r.items?.length) mutate((st) => { for (const it of r.items) addToInventory(st, it); return { ok: true }; });
+        ui.toast(r.installDestroyed
+          ? `Установка уничтожена: убито ${r.killed}/${r.total}, награда ×${r.lootFactor}`
+          : `Осада отбита: убито ${r.killed}/${r.total}, полная награда`);
+      }
     }
+  }
+
+  // ── полноэкранные оверлеи поверх игры: ставят симуляцию на паузу, не показывая экран «Пауза» ──
+  let overlayRefreshFn = null;
+  const offOverlayRefresh = on('ui:refresh', () => { if (ui.overlayOpen && overlayRefreshFn) ui.redrawOverlay(overlayRefreshFn); });
+
+  function closeAnyOverlay() {
+    ui.closeOverlay();
+    overlayRefreshFn = null;
+    paused = false;
+  }
+  function openMenuOverlay(title, render) {
+    overlayRefreshFn = render;
+    paused = true;
+    ui.openOverlay(title, render, closeAnyOverlay);
+  }
+  function openMapOverlay() {
+    paused = true;
+    const render = (el) => {
+      const cv = h('canvas', { class: 'map-canvas' });
+      el.append(cv);
+      requestAnimationFrame(() => renderer.drawFullMap(cv, world));
+    };
+    overlayRefreshFn = null;
+    ui.openOverlay('Карта', render, closeAnyOverlay);
   }
 
   const view = () => {
@@ -118,7 +170,9 @@ export function startGame({ root, mapId = 'swamp', onEnd }) {
     last = now;
 
     const inp = input.read();
-    if (inp.pause) setPaused(!paused);
+    if (inp.pause) { if (ui.overlayOpen) closeAnyOverlay(); else setPaused(!paused); }
+    if (inp.inventory) { if (ui.overlayOpen) closeAnyOverlay(); else if (!paused) openMenuOverlay('Инвентарь', renderInventory); }
+    if (inp.map) { if (ui.overlayOpen) closeAnyOverlay(); else if (!paused) openMapOverlay(); }
     // одноразовые нажатия копим, пока не пройдёт хотя бы один шаг симуляции
     carry.reload ||= inp.reload; carry.swap ||= inp.swap; carry.interact ||= inp.interact; carry.select = inp.select ?? carry.select;
 
@@ -147,10 +201,15 @@ export function startGame({ root, mapId = 'swamp', onEnd }) {
   const onVisibility = () => { if (document.hidden && !paused) setPaused(true); };
   window.addEventListener('resize', onResize);
   document.addEventListener('visibilitychange', onVisibility);
-  ui.pauseBtn.addEventListener('click', () => input.press('pause'));
+  ui.pauseBtn.addEventListener('click', () => (ui.overlayOpen ? closeAnyOverlay() : input.press('pause')));
+  ui.btnInv.addEventListener('click', () => (ui.overlayOpen ? closeAnyOverlay() : openMenuOverlay('Инвентарь', renderInventory)));
+  ui.btnMap.addEventListener('click', () => (ui.overlayOpen ? closeAnyOverlay() : openMapOverlay()));
   ui.prompt.addEventListener('click', () => input.press('interact'));
   ui.btnReload?.addEventListener('pointerdown', (e) => { e.preventDefault(); input.press('reload'); });
   ui.btnSwap?.addEventListener('pointerdown', (e) => { e.preventDefault(); input.press('swap'); });
+  ui.btnFire?.addEventListener('pointerdown', (e) => { e.preventDefault(); input.setFire(true); });
+  ui.btnFire?.addEventListener('pointerup', (e) => { e.preventDefault(); input.setFire(false); });
+  ui.btnFire?.addEventListener('pointercancel', () => input.setFire(false));
 
   if (dev) {
     window.__world = world; window.__renderer = renderer; // отладка из консоли/тестов
@@ -160,6 +219,7 @@ export function startGame({ root, mapId = 'swamp', onEnd }) {
     b('−25 взрыв', () => damagePlayer(world, p, 'blast', 25));
     b('Лечить', () => { p.hp = p.stats.health; });
     b('Метки точек', () => { debugMarkers = !debugMarkers; });
+    b('Осада разлома рядом', () => { startSiege(world, p.x + 4 * 32, p.y); });
   }
 
   ui.update(view());

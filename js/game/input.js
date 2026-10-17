@@ -2,14 +2,15 @@
 // Отдаёт «намерения» (куда идти, куда целиться, стрелять ли) — симуляция не знает, откуда они пришли.
 const DEAD = 0.12;    // мёртвая зона стика
 const STICK_R = 58;   // радиус хода стика в пикселях
-const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyR', 'KeyQ', 'KeyE', 'KeyF', 'Digit1', 'Digit2', 'Escape', 'KeyP']);
+const GAME_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyR', 'KeyQ', 'KeyE', 'KeyF', 'Digit1', 'Digit2', 'Escape', 'KeyP', 'KeyM', 'KeyI']);
 
 export function createInput({ zones, canvas, playerScreen, touchMode, onStick }) {
-  const edge = { reload: false, swap: false, interact: false, pause: false, select: null };
+  const edge = { reload: false, swap: false, interact: false, pause: false, select: null, map: false, inventory: false };
   const keys = new Set();
   const stick = { move: { active: false, id: null, x: 0, y: 0, ox: 0, oy: 0 }, aim: { active: false, id: null, x: 0, y: 0, ox: 0, oy: 0 } };
   const mouse = { x: 0, y: 0, down: false, moved: false };
   let lastAim = -Math.PI / 2;
+  let fireHeld = false; // отдельная кнопка «Огонь» на телефоне — стик прицела больше не стреляет сам
   const off = [];
   const listen = (target, type, fn, opts) => { target.addEventListener(type, fn, opts); off.push(() => target.removeEventListener(type, fn, opts)); };
 
@@ -24,6 +25,8 @@ export function createInput({ zones, canvas, playerScreen, touchMode, onStick })
     else if (e.code === 'Digit2') edge.select = 'secondary';
     else if (e.code === 'KeyE' || e.code === 'KeyF') edge.interact = true;
     else if (e.code === 'Escape' || e.code === 'KeyP') edge.pause = true;
+    else if (e.code === 'KeyM') edge.map = true;
+    else if (e.code === 'KeyI') edge.inventory = true;
   });
   listen(window, 'keyup', (e) => keys.delete(e.code));
   listen(window, 'blur', () => { keys.clear(); mouse.down = false; });
@@ -80,13 +83,13 @@ export function createInput({ zones, canvas, playerScreen, touchMode, onStick })
       if (l > 1) { mx /= l; my /= l; }
     }
 
-    // прицел: правый стик (стрельба, когда стик отведён), иначе мышь, иначе в сторону движения на телефоне
-    let firing = keys.has('Space');
+    // прицел: правый стик только задаёт направление (не стреляет), иначе мышь, иначе в сторону движения на телефоне.
+    // Стрельба — отдельная кнопка «Огонь» (fireHeld) на телефоне, пробел/ЛКМ на компьютере.
+    let firing = keys.has('Space') || fireHeld;
     const sa = stick.aim;
     const al = Math.hypot(sa.x, sa.y);
     if (sa.active && al > 0.25) {
       lastAim = Math.atan2(sa.y, sa.x);
-      firing = firing || al > 0.5;
     } else if (mouse.moved) {
       const ps = playerScreen();
       lastAim = Math.atan2(mouse.y - ps.y, mouse.x - ps.x);
@@ -95,14 +98,19 @@ export function createInput({ zones, canvas, playerScreen, touchMode, onStick })
       lastAim = Math.atan2(my, mx);
     }
 
-    const out = { moveX: mx, moveY: my, aim: lastAim, firing, reload: edge.reload, swap: edge.swap, select: edge.select, interact: edge.interact, pause: edge.pause };
-    edge.reload = edge.swap = edge.interact = edge.pause = false; edge.select = null;
+    const out = {
+      moveX: mx, moveY: my, aim: lastAim, firing,
+      reload: edge.reload, swap: edge.swap, select: edge.select, interact: edge.interact, pause: edge.pause,
+      map: edge.map, inventory: edge.inventory,
+    };
+    edge.reload = edge.swap = edge.interact = edge.pause = edge.map = edge.inventory = false; edge.select = null;
     return out;
   }
 
   return {
     read,
     press(name) { edge[name] = true; },
+    setFire(v) { fireHeld = v; },
     dispose() { off.forEach((f) => f()); },
   };
 }

@@ -3,6 +3,9 @@
 import { TILE, tileAt } from '../../data/tiles.js';
 import { ENEMY_KINDS } from '../../data/enemies.js';
 import { getItem } from '../../data/items.js';
+import { stepNpc } from './ai.js';
+import { createSpots, stepSpots, lootCrate } from './spots.js';
+import { stepSiege } from './siege.js';
 
 export const SIM = {
   playerRadius: 10,
@@ -29,6 +32,7 @@ export function createWorld({ map, host, snapshot }) {
     map, host, t: 0, over: false,
     players: {}, bullets: [], dummies: [], floaters: [], events: [], nextId: 1,
     hatch: null, transitions: [], markers: [],
+    npcs: [], meleeQueue: [], siege: null, camera: null, // ИИ/споты/осада; camera ставится снаружи (session.js)
   };
   for (const o of map.objects) {
     if (o.type === 'hatch') world.hatch = { ...toPx(o), label: o.label };
@@ -40,6 +44,7 @@ export function createWorld({ map, host, snapshot }) {
   }
   const spawn = map.objects.find((o) => o.type === 'spawn') ?? { x: map.w / 2, y: map.h / 2 };
   addPlayer(world, 'p1', spawn.x * TILE, spawn.y * TILE, snapshot);
+  world.spots = createSpots(world); // споты мутантов/людей — мир стартует уже населённым, а не пустым
   return world;
 }
 
@@ -65,7 +70,8 @@ function addPlayer(world, id, x, y, snap) {
 export function setPlayerStats(world, id, stats) { world.players[id].stats = stats; }
 
 // ── столкновения ────────────────────────────────────────────
-function blockedAt(map, x, y, r) {
+// экспортируется, чтобы ИИ (ai.js) и осада (siege.js) пользовались той же проверкой столкновений, что игрок
+export function blockedAt(map, x, y, r) {
   const x0 = Math.floor((x - r) / TILE), x1 = Math.floor((x + r) / TILE);
   const y0 = Math.floor((y - r) / TILE), y1 = Math.floor((y + r) / TILE);
   for (let ty = y0; ty <= y1; ty++) {
@@ -78,7 +84,7 @@ function blockedAt(map, x, y, r) {
   }
   return false;
 }
-function moveWithCollision(map, e, dx, dy, r) {
+export function moveWithCollision(map, e, dx, dy, r) {
   if (!blockedAt(map, e.x + dx, e.y, r)) e.x += dx;
   if (!blockedAt(map, e.x, e.y + dy, r)) e.y += dy;
 }
@@ -91,13 +97,32 @@ function segCircle(x0, y0, x1, y1, cx, cy, r) {
 }
 
 // ── шаг симуляции ───────────────────────────────────────────
+const CORPSE_FADE = 2.5;
+
 export function step(world, dt) {
   world.t += dt;
+  const p1 = world.players.p1;
   for (const p of Object.values(world.players)) stepPlayer(world, p, dt);
+  for (const npc of world.npcs) stepNpc(world, npc, dt, p1);
+  drainMeleeQueue(world);
   stepBullets(world, dt);
   stepDummies(world, dt);
+  stepSpots(world, dt);
+  stepSiege(world, dt);
+  world.npcs = world.npcs.filter((n) => !n.dead || n.corpseT > -CORPSE_FADE);
   for (const f of world.floaters) { f.t += dt; f.y -= 26 * dt; }
   world.floaters = world.floaters.filter((f) => f.t < f.life);
+}
+
+function drainMeleeQueue(world) {
+  const queue = world.meleeQueue.splice(0);
+  for (const hit of queue) {
+    const npc = world.npcs.find((n) => n.id === hit.npcId);
+    if (!npc || npc.dead) continue;
+    for (const p of Object.values(world.players)) {
+      if (p.alive) damagePlayer(world, p, hit.dmgType ?? 'tear', hit.dmg);
+    }
+  }
 }
 
 const floater = (world, x, y, text, color = '#fff', life = 0.9) => world.floaters.push({ x, y, text, color, t: 0, life });
@@ -143,15 +168,21 @@ function stepPlayer(world, p, dt) {
     p.hp = Math.min(st.health, p.hp);
   }
 
-  // подсказки и взаимодействие: люк бункера, переходы
+  // подсказки и взаимодействие: люк бункера, переходы, ящик с добычей у зачищенной точки
   p.prompt = null;
+  let crateSpot = null;
   if (world.hatch && rectCenterDist(p.x, p.y, world.hatch) <= SIM.interactRange) p.prompt = { type: 'hatch', text: 'Войти в бункер' };
   else {
     const tr = world.transitions.find((t) => rectCenterDist(p.x, p.y, t) <= SIM.interactRange);
     if (tr) p.prompt = { type: 'transition', text: tr.locked ? `${tr.label}: пока закрыто` : tr.label };
+    else {
+      crateSpot = world.spots.find((s) => s.crate && Math.hypot(p.x - s.x, p.y - s.y) <= SIM.interactRange);
+      if (crateSpot) p.prompt = { type: 'crate', text: 'Забрать добычу' };
+    }
   }
   if (inp.interact && p.prompt) {
     if (p.prompt.type === 'hatch') world.events.push({ type: 'exit', pid: p.id });
+    else if (p.prompt.type === 'crate') world.events.push({ type: 'loot_crate', pid: p.id, spotId: crateSpot.id });
     else world.events.push({ type: 'transition_locked', pid: p.id });
   }
 }
@@ -203,9 +234,22 @@ function stepBullets(world, dt) {
     const stepLen = Math.hypot(b.vx, b.vy) * dt;
     if (tileAt(world.map, Math.floor(nx / TILE), Math.floor(ny / TILE)).blocksBullets) continue;
     let hit = false;
-    for (const d of world.dummies) {
-      if (d.dead) continue;
-      if (segCircle(b.x, b.y, nx, ny, d.x, d.y, d.r)) { hitDummy(world, d, b); hit = true; break; }
+    if (b.owner === 'npc') {
+      // пули НПС бьют только по игроку
+      const p = world.players.p1;
+      if (p.alive && segCircle(b.x, b.y, nx, ny, p.x, p.y, p.r)) {
+        damagePlayer(world, p, b.dmgType ?? 'bullet', b.dmg);
+        hit = true;
+      }
+    } else {
+      for (const d of world.dummies) {
+        if (d.dead) continue;
+        if (segCircle(b.x, b.y, nx, ny, d.x, d.y, d.r)) { hitEntity(world, d, b, true); hit = true; break; }
+      }
+      if (!hit) for (const n of world.npcs) {
+        if (n.dead) continue;
+        if (segCircle(b.x, b.y, nx, ny, n.x, n.y, n.r)) { hitEntity(world, n, b, false); hit = true; break; }
+      }
     }
     if (hit) continue;
     b.x = nx; b.y = ny; b.dist += stepLen;
@@ -214,20 +258,25 @@ function stepBullets(world, dt) {
   world.bullets = keep;
 }
 
-function hitDummy(world, d, b) {
-  const kind = ENEMY_KINDS[d.kind];
-  const mult = kind.mutant ? b.mutMult : 1;
+function hitEntity(world, e, b, isDummy) {
+  const kind = ENEMY_KINDS[isDummy ? e.kind : e.kindId];
+  const mult = kind.mutant ? (b.mutMult ?? 1) : 1;
   const dmg = Math.round(b.dmg * mult);
-  d.hp -= dmg; d.flash = 0.12;
-  floater(world, d.x, d.y - d.r - 4, String(dmg), mult > 1 ? '#ffb347' : '#ffffff');
-  if (b.stop) { d.slowT = SIM.stopTime; d.slow = b.stop / 100; }
-  if (b.bleed && Math.random() * 100 < b.bleed) { d.bleedT = SIM.bleedTime; d.bleedAcc = 0; floater(world, d.x + 8, d.y, 'кровь', '#ff6b5e', 0.8); }
-  if (d.hp <= 0) killDummy(world, d);
+  e.hp -= dmg; e.flash = 0.12;
+  floater(world, e.x, e.y - e.r - 4, String(dmg), mult > 1 ? '#ffb347' : '#ffffff');
+  if (b.stop) { e.slowT = SIM.stopTime; e.slow = b.stop / 100; }
+  if (b.bleed && Math.random() * 100 < b.bleed) { e.bleedT = SIM.bleedTime; e.bleedAcc = 0; floater(world, e.x + 8, e.y, 'кровь', '#ff6b5e', 0.8); }
+  if (e.hp <= 0) (isDummy ? killDummy(world, e) : killNpc(world, e));
 }
 
 function killDummy(world, d) {
   d.hp = 0; d.dead = true; d.respawnT = SIM.respawnTime; d.bleedT = 0; d.slowT = 0;
   world.events.push({ type: 'kill', kind: d.kind });
+}
+
+function killNpc(world, n) {
+  n.hp = 0; n.dead = true; n.corpseT = CORPSE_FADE; n.bleedT = 0; n.slowT = 0;
+  world.events.push({ type: 'kill', kind: n.kindId });
 }
 
 function stepDummies(world, dt) {

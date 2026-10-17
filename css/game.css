@@ -12,6 +12,9 @@
 .gbtn { pointer-events: auto; width: 56px; height: 56px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, .25); background: rgba(20, 28, 25, .6); color: var(--text); font: 700 22px var(--f-head); backdrop-filter: blur(3px); }
 .gbtn.small { width: 40px; height: 40px; font-size: 14px; }
 .gbtn:active { background: rgba(227, 169, 58, .35); }
+.hud-top-btns { pointer-events: auto; display: flex; gap: 8px; }
+.gbtn.fire { width: 76px; height: 76px; font-size: 30px; border-color: rgba(220, 90, 69, .7); background: rgba(90, 30, 24, .55); color: #ffb3a4; position: absolute; right: calc(14px + env(safe-area-inset-right, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+.gbtn.fire:active { background: rgba(220, 90, 69, .55); }
 
 .hud-weapon { position: absolute; left: calc(12px + env(safe-area-inset-left, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); width: min(230px, 48vw); padding: 8px 10px; background: rgba(8, 12, 10, .62); border-left: 3px solid var(--accent); pointer-events: none; display: grid; gap: 4px; }
 .wrow { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
@@ -32,9 +35,9 @@
 .zone-aim { right: 0; width: 50%; }
 .stick { position: absolute; width: 116px; height: 116px; margin: -58px 0 0 -58px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .28); background: rgba(255, 255, 255, .06); pointer-events: none; }
 .stick i { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%; background: rgba(255, 255, 255, .35); }
-.game.touch .gbtn:not(.small) { position: absolute; right: calc(14px + env(safe-area-inset-right, 0px)); }
-.game.touch .gbtn:nth-of-type(2) { bottom: calc(200px + env(safe-area-inset-bottom, 0px)); }
-.game.touch .gbtn:nth-of-type(3) { bottom: calc(270px + env(safe-area-inset-bottom, 0px)); }
+.game.touch .gbtn.reload, .game.touch .gbtn.swap { position: absolute; right: calc(100px + env(safe-area-inset-right, 0px)); }
+.game.touch .gbtn.reload { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+.game.touch .gbtn.swap { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); right: calc(170px + env(safe-area-inset-right, 0px)); }
 .game.touch .hud-weapon { left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
 .game.touch .prompt { bottom: calc(90px + env(safe-area-inset-bottom, 0px)); }
 
@@ -47,3 +50,11 @@
 .devbox { position: absolute; left: calc(12px + env(safe-area-inset-left, 0px)); top: 56px; display: flex; flex-direction: column; gap: 4px; z-index: 2; }
 .devbox button { pointer-events: auto; font-size: 11px; padding: 4px 8px; background: rgba(20, 28, 25, .75); border: 1px solid var(--line2); }
 .game.touch .devbox { top: 112px; }
+
+/* Оверлей инвентаря/настроек/карты поверх идущей игры */
+.game-overlay { position: absolute; inset: 0; z-index: 4; background: var(--bg, #0b0f0d); display: flex; flex-direction: column; pointer-events: auto; }
+.game-overlay[hidden] { display: none; }
+.game-overlay-head { display: flex; align-items: center; justify-content: space-between; padding: calc(12px + env(safe-area-inset-top, 0px)) 14px 10px; border-bottom: 1px solid var(--line2); flex: none; }
+.game-overlay-head h2 { font: 700 16px var(--f-head); margin: 0; }
+.game-overlay-body { flex: 1; overflow-y: auto; padding: 10px 14px calc(20px + env(safe-area-inset-bottom, 0px)); }
+.map-canvas { width: 100%; height: 100%; display: block; min-height: 60vh; }
