@@ -3,6 +3,7 @@
 import { TILE, tileAt } from '../../data/tiles.js';
 import { ENEMY_KINDS } from '../../data/enemies.js';
 import { getItem } from '../../data/items.js';
+import { effectiveZoneLevel } from '../stats.js';
 import { stepNpc } from './ai.js';
 import { createSpots, stepSpots, lootCrate } from './spots.js';
 import { stepSiege } from './siege.js';
@@ -17,7 +18,14 @@ export const SIM = {
   stopTime: 0.6,             // сколько длится замедление от «остановки»
   respawnTime: 4,
   interactRange: 1.6 * TILE,
+  // Заражение: шкала 0-100 на каждый тип (rad/bio/psi/temp). Копится, пока «пробивает» непрощённый
+  // уровень зоны, выводится статом вывода (cleanseRate — для rad/bio/psi, burnRemoval — для temp),
+  // пока шкала полна — тикает урон по здоровью (отдельно от обычного урона, брони не касается).
+  contamPerLevel: 7,   // прирост шкалы в секунду за каждый непрощённый уровень заражения
+  contamDps: 2.5,      // урон здоровью в секунду, пока шкала конкретного типа на 100
 };
+
+const ZONE_TYPES = ['rad', 'bio', 'psi', 'temp'];
 
 const rectCenterDist = (px, py, r) => {
   const cx = Math.max(r.x, Math.min(px, r.x + r.w));
@@ -62,7 +70,7 @@ function addPlayer(world, id, x, y, snap) {
     weapons, active: weapons.weapon ? 'weapon' : (weapons.secondary ? 'secondary' : null),
     armor: snap.armor ? { id: snap.armor.id, dur: snap.armor.dur ?? getItem(snap.armor.id).durMax, def: getItem(snap.armor.id) } : null,
     cooldown: 0, reloadT: 0, reloadTotal: 0, reloadKind: null, drawT: 0, flash: 0,
-    moving: false, prompt: null,
+    moving: false, prompt: null, zone: null, contam: { rad: 0, bio: 0, psi: 0, temp: 0 },
     input: { moveX: 0, moveY: 0, aim: null, firing: false, reload: false, swap: false, select: null, interact: false },
   };
 }
@@ -168,6 +176,8 @@ function stepPlayer(world, p, dt) {
     p.hp = Math.min(st.health, p.hp);
   }
 
+  stepContamination(world, p, dt);
+
   // подсказки и взаимодействие: люк бункера, переходы, ящик с добычей у зачищенной точки
   p.prompt = null;
   let crateSpot = null;
@@ -185,6 +195,43 @@ function stepPlayer(world, p, dt) {
     else if (p.prompt.type === 'crate') world.events.push({ type: 'loot_crate', pid: p.id, spotId: crateSpot.id });
     else world.events.push({ type: 'transition_locked', pid: p.id });
   }
+}
+
+// Текущая зона заражения под игроком (если он внутри нескольких — берём самую опасную по уровню)
+function zoneAt(world, x, y) {
+  const zones = world.map.zones;
+  if (!zones) return null;
+  let best = null;
+  for (const z of zones) {
+    const dx = x - z.x * TILE, dy = y - z.y * TILE;
+    if (dx * dx + dy * dy <= (z.r * TILE) ** 2 && (!best || z.level > best.level)) best = z;
+  }
+  return best;
+}
+
+function stepContamination(world, p, dt) {
+  const prevZone = p.zone;
+  const z = zoneAt(world, p.x, p.y);
+  p.zone = z;
+  if (z && z !== prevZone) world.events.push({ type: 'zone_enter', pid: p.id, zone: { name: z.name, level: z.level } });
+  const prevMax = Math.max(p.contam.rad, p.contam.bio, p.contam.psi, p.contam.temp);
+  for (const type of ZONE_TYPES) {
+    const inThisZone = z && z.type === type;
+    const effLevel = inThisZone ? effectiveZoneLevel(z.level, p.stats[type] ?? 0) : 0;
+    if (effLevel > 0) {
+      p.contam[type] = Math.min(100, p.contam[type] + SIM.contamPerLevel * effLevel * dt);
+    } else if (p.contam[type] > 0) {
+      const removal = type === 'temp' ? p.stats.burnRemoval : p.stats.cleanseRate;
+      p.contam[type] = Math.max(0, p.contam[type] - removal * dt);
+    }
+    if (p.contam[type] >= 100 && p.alive) {
+      p.hp = Math.max(0, p.hp - (SIM.contamDps * p.stats.health / 100) * dt);
+      p.lastDamageT = world.t;
+      if (p.hp <= 0) { p.alive = false; world.events.push({ type: 'death', pid: p.id }); }
+    }
+  }
+  const newMax = Math.max(p.contam.rad, p.contam.bio, p.contam.psi, p.contam.temp);
+  if (prevMax < 100 && newMax >= 100) world.events.push({ type: 'contam_critical', pid: p.id });
 }
 
 function startReload(world, p, w) {

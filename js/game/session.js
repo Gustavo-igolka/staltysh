@@ -108,6 +108,8 @@ export function startGame({ root, mapId = 'swamp', onEnd }) {
       else if (e.type === 'jam') ui.toast('Оружие клинит: нужна полная перезарядка');
       else if (e.type === 'weapon_broken') { ui.toast('Оружие сломано'); commit(); }
       else if (e.type === 'armor_broken') { ui.toast('Броня сломана: защиты больше нет'); commit(); setPlayerStats(world, 'p1', computeStats(getState())); }
+      else if (e.type === 'zone_enter') ui.toast(`${e.zone.name}: заражение ${e.zone.level} ур.`);
+      else if (e.type === 'contam_critical') ui.toast('Заражение критическое: наносит урон здоровью', 'warn');
       else if (e.type === 'loot_crate') {
         const spot = world.spots.find((s) => s.id === e.spotId);
         const items = spot ? lootCrate(world, spot) : [];
@@ -159,7 +161,7 @@ export function startGame({ root, mapId = 'swamp', onEnd }) {
       hp: p.hp, maxHp: p.stats.health, zone: renderer.zoneRarity(p.y),
       weapon: w && { name: w.def.name, mag: w.mag, reserve: countAmmo(getState(), w.def.ammo), durPct: (w.dur / w.def.durMax) * 100, jammed: w.jammed },
       reloadPct: p.reloadT > 0 ? 1 - p.reloadT / p.reloadTotal : null, reloadKind: p.reloadKind,
-      drawing: p.drawT > 0, prompt: p.prompt,
+      drawing: p.drawT > 0, prompt: p.prompt, contam: p.contam,
     };
   };
 

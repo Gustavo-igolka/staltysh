@@ -2,6 +2,8 @@
 import { h } from '../core/dom.js';
 import { rarityCss } from './common.js';
 
+const CONTAM_LABELS = { rad: 'Радиация', bio: 'Биозаражение', psi: 'Пси-излучение', temp: 'Температура' };
+
 export function buildGameUI({ touch, dev }) {
   const canvas = h('canvas', { class: 'game-canvas' });
 
@@ -15,6 +17,7 @@ export function buildGameUI({ touch, dev }) {
   const durFill = h('i'); const reloadFill = h('i');
   const prompt = h('button', { class: 'prompt', hidden: true });
   const toastEl = h('div', { class: 'gtoast', hidden: true });
+  const contamBox = h('div', { class: 'contam' });
 
   const top = h('div', { class: 'hud-top' },
     h('div', { class: 'hp' }, h('div', { class: 'bar hp-bar' }, hpFill), hpText),
@@ -51,7 +54,7 @@ export function buildGameUI({ touch, dev }) {
   const el = h('div', { class: 'game' + (touch ? ' touch' : '') },
     canvas, h('div', { class: 'game-vignette' }),
     zoneMove, zoneAim, stickMove, stickAim,
-    top, weapon, prompt, btnFire, btnReload, btnSwap, devBox, toastEl, pauseLayer, overlay);
+    top, contamBox, weapon, prompt, btnFire, btnReload, btnSwap, devBox, toastEl, pauseLayer, overlay);
 
   let toastT = null;
   return {
@@ -78,8 +81,9 @@ export function buildGameUI({ touch, dev }) {
       st.firstChild.style.transform = `translate(${s.kx}px, ${s.ky}px)`;
     },
 
-    toast(msg) {
+    toast(msg, kind = 'info') {
       toastEl.textContent = msg; toastEl.hidden = false;
+      toastEl.classList.toggle('warn', kind === 'warn');
       clearTimeout(toastT); toastT = setTimeout(() => { toastEl.hidden = true; }, 2200);
     },
 
@@ -87,6 +91,11 @@ export function buildGameUI({ touch, dev }) {
       hpFill.style.width = `${Math.max(0, (v.hp / v.maxHp) * 100)}%`;
       hpText.textContent = `${Math.ceil(v.hp)}`;
       zoneChip.textContent = v.zone.name;
+      const chips = Object.entries(v.contam ?? {}).filter(([, val]) => val > 0.5);
+      contamBox.replaceChildren(...chips.map(([type, val]) =>
+        h('div', { class: 'contam-chip' + (val >= 100 ? ' crit' : '') },
+          h('span', null, CONTAM_LABELS[type] ?? type),
+          h('div', { class: 'bar' }, h('i', { style: { width: `${Math.min(100, val)}%` } })))));
       zoneChip.style.setProperty('--rc', rarityCss(v.zone.rarity));
       if (v.weapon) {
         weapon.hidden = false;
