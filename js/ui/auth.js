@@ -2,6 +2,7 @@
 import { h } from '../core/dom.js';
 import { GUEST_FLAG } from '../core/session.js';
 import { signIn, signUp, friendlyError } from '../net/auth.js';
+import { GAME_VERSION } from '../core/version.js';
 
 const NICK_RE = /^[\p{L}\p{N}_\- ]{3,20}$/u;
 
@@ -57,7 +58,7 @@ export function showAuth(root) {
 
       root.replaceChildren(h('div', { class: 'auth' },
         h('div', { class: 'hazard' }),
-        h('h1', null, 'Бункер'),
+        h('h1', null, 'Бункер', h('span', { class: 'version' }, GAME_VERSION)),
         h('p', { class: 'muted' }, 'Войди, чтобы прогресс хранился в облаке, а результаты попадали в рейтинг.'),
         h('div', { class: 'chips' },
           h('button', { class: 'chip' + (mode === 'login' ? ' active' : ''), type: 'button', onclick: () => { mode = 'login'; notice = null; draw(); } }, 'Вход'),

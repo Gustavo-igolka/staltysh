@@ -1,6 +1,7 @@
 // Каркас приложения: верхняя панель с кошельком, область экрана, нижнее меню
 import { h } from '../core/dom.js';
 import { fmt } from '../core/util.js';
+import { GAME_VERSION } from '../core/version.js';
 
 const SYNC = {
   local:   ['Сохранено на этом устройстве', 'local'],
@@ -23,7 +24,7 @@ export function createShell(screens, onNavigate) {
 
   const el = h('div', { class: 'shell' },
     h('header', { class: 'topbar' },
-      h('div', { class: 'brand' }, h('b', null, 'Бункер'), who),
+      h('div', { class: 'brand' }, h('b', null, 'Бункер', h('span', { class: 'version' }, GAME_VERSION)), who),
       h('div', { class: 'wallet' }, money, chromo, sync)),
     h('div', { class: 'hazard' }),
     main,

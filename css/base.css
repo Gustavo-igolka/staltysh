@@ -53,7 +53,8 @@ small { font-size: 12px; }
   background: var(--bg2);
 }
 .brand { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
-.brand b { font: 700 15px var(--f-head); letter-spacing: .06em; }
+.brand b { font: 700 15px var(--f-head); letter-spacing: .06em; display: flex; align-items: baseline; gap: 6px; }
+.version { font: 500 10px var(--f-body); color: var(--muted); letter-spacing: 0; }
 .who { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wallet { display: flex; align-items: center; gap: 12px; }
 .chip-val { font: 600 13px var(--f-head); white-space: nowrap; }
