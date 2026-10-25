@@ -2,7 +2,7 @@
 // Так её можно позже перенести на сервер для настоящего мультиплеера.
 import { TILE, tileAt } from '../../data/tiles.js';
 import { ENEMY_KINDS } from '../../data/enemies.js';
-import { getItem } from '../../data/items.js';
+import { getItem, RES_TYPES, resId } from '../../data/items.js';
 import { effectiveZoneLevel } from '../stats.js';
 import { stepNpc } from './ai.js';
 import { createSpots, stepSpots, lootCrate } from './spots.js';
@@ -23,9 +23,13 @@ export const SIM = {
   // пока шкала полна — тикает урон по здоровью (отдельно от обычного урона, брони не касается).
   contamPerLevel: 7,   // прирост шкалы в секунду за каждый непрощённый уровень заражения
   contamDps: 2.5,      // урон здоровью в секунду, пока шкала конкретного типа на 100
+  detectorRange: 9 * TILE, // металлоискатель: дистанция, с которой начинает расти сигнал (нужен в инвентаре, не в слоте)
 };
 
 const ZONE_TYPES = ['rad', 'bio', 'psi', 'temp'];
+
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 const rectCenterDist = (px, py, r) => {
   const cx = Math.max(r.x, Math.min(px, r.x + r.w));
@@ -35,22 +39,24 @@ const rectCenterDist = (px, py, r) => {
 const toPx = (o) => ({ x: o.x * TILE, y: o.y * TILE, w: (o.w ?? 0) * TILE, h: (o.h ?? 0) * TILE });
 
 // ── создание ────────────────────────────────────────────────
-export function createWorld({ map, host, snapshot }) {
+export function createWorld({ map, host, snapshot, arrive }) {
   const world = {
     map, host, t: 0, over: false,
     players: {}, bullets: [], dummies: [], floaters: [], events: [], nextId: 1,
-    hatch: null, transitions: [], markers: [],
+    hatch: null, transitions: [], markers: [], stashes: [],
     npcs: [], meleeQueue: [], siege: null, camera: null, // ИИ/споты/осада; camera ставится снаружи (session.js)
   };
   for (const o of map.objects) {
     if (o.type === 'hatch') world.hatch = { ...toPx(o), label: o.label };
-    else if (o.type === 'transition') world.transitions.push({ ...toPx(o), label: o.label, locked: !!o.locked, to: o.to });
+    else if (o.type === 'transition') world.transitions.push({ ...toPx(o), label: o.label, locked: !!o.locked, to: o.to, arriveX: o.arriveX, arriveY: o.arriveY });
+    else if (o.type === 'stash') world.stashes.push({ id: world.nextId++, x: o.x * TILE, y: o.y * TILE, found: false });
     else if (o.type === 'dummy') {
       const k = ENEMY_KINDS[o.kind];
       world.dummies.push({ id: world.nextId++, kind: o.kind, x: o.x * TILE, y: o.y * TILE, r: k.r, hp: k.hp, maxHp: k.hp, dead: false, respawnT: 0, flash: 0, slowT: 0, slow: 0, bleedT: 0, bleedAcc: 0 });
     } else if (o.type !== 'spawn') world.markers.push({ type: o.type, x: o.x * TILE, y: o.y * TILE });
   }
-  const spawn = map.objects.find((o) => o.type === 'spawn') ?? { x: map.w / 2, y: map.h / 2 };
+  // при переходе с другой карты игрок появляется в указанной точке, а не на штатном споне карты
+  const spawn = arrive ?? (map.objects.find((o) => o.type === 'spawn') ?? { x: map.w / 2, y: map.h / 2 });
   addPlayer(world, 'p1', spawn.x * TILE, spawn.y * TILE, snapshot);
   world.spots = createSpots(world); // споты мутантов/людей — мир стартует уже населённым, а не пустым
   return world;
@@ -177,24 +183,69 @@ function stepPlayer(world, p, dt) {
   }
 
   stepContamination(world, p, dt);
+  stepDetector(world, p);
 
-  // подсказки и взаимодействие: люк бункера, переходы, ящик с добычей у зачищенной точки
+  // подсказки и взаимодействие: люк бункера, переходы, ящик с добычей у зачищенной точки, прикоп
   p.prompt = null;
   let crateSpot = null;
+  let trHit = null;
+  let stashHit = null;
   if (world.hatch && rectCenterDist(p.x, p.y, world.hatch) <= SIM.interactRange) p.prompt = { type: 'hatch', text: 'Войти в бункер' };
   else {
-    const tr = world.transitions.find((t) => rectCenterDist(p.x, p.y, t) <= SIM.interactRange);
-    if (tr) p.prompt = { type: 'transition', text: tr.locked ? `${tr.label}: пока закрыто` : tr.label };
+    trHit = world.transitions.find((t) => rectCenterDist(p.x, p.y, t) <= SIM.interactRange);
+    if (trHit) p.prompt = { type: 'transition', text: trHit.locked ? `${trHit.label}: пока закрыто` : trHit.label };
     else {
       crateSpot = world.spots.find((s) => s.crate && Math.hypot(p.x - s.x, p.y - s.y) <= SIM.interactRange);
       if (crateSpot) p.prompt = { type: 'crate', text: 'Забрать добычу' };
+      else if (p.hasDetector) {
+        stashHit = world.stashes.find((s) => !s.found && Math.hypot(p.x - s.x, p.y - s.y) <= SIM.interactRange);
+        if (stashHit) p.prompt = { type: 'stash', text: 'Раскопать прикоп' };
+      }
     }
   }
   if (inp.interact && p.prompt) {
     if (p.prompt.type === 'hatch') world.events.push({ type: 'exit', pid: p.id });
     else if (p.prompt.type === 'crate') world.events.push({ type: 'loot_crate', pid: p.id, spotId: crateSpot.id });
-    else world.events.push({ type: 'transition_locked', pid: p.id });
+    else if (p.prompt.type === 'stash') world.events.push({ type: 'loot_stash', pid: p.id, stashId: stashHit.id });
+    else if (p.prompt.type === 'transition') {
+      if (trHit.locked) world.events.push({ type: 'transition_locked', pid: p.id });
+      else world.events.push({ type: 'transition', pid: p.id, to: trHit.to, arriveX: trHit.arriveX, arriveY: trHit.arriveY });
+    }
   }
+}
+
+// Металлоискатель: нужен просто в инвентаре вылазки (не в слоте экипировки). Сигнал — непрерывная
+// величина 0..1 от расстояния до ближайшего нераскопанного прикопа, без дискретных «бипов» (чтобы не
+// спамить тостами) — HUD сам решает, как это показать (пульсация/шкала).
+function stepDetector(world, p) {
+  const carrying = !!world.host.hasItem?.('metal_detector');
+  p.hasDetector = carrying;
+  p.detector = 0;
+  if (!carrying || !world.stashes.length) return;
+  let nearest = Infinity;
+  for (const s of world.stashes) {
+    if (s.found) continue;
+    const d = Math.hypot(p.x - s.x, p.y - s.y);
+    if (d < nearest) nearest = d;
+  }
+  if (nearest < SIM.detectorRange) p.detector = Math.max(0, 1 - nearest / SIM.detectorRange);
+}
+
+// Раскопка прикопа: редкость ресурса = редкость зоны (прикопы бывают только на картах от синей редкости).
+function rollStashLoot(world, stash) {
+  const rarity = world.map.bands.find((b) => stash.y / TILE >= b.fromY)?.rarity ?? 'grey';
+  const rarities = RES_TYPES.stash.rarities;
+  const r = rarities.includes(rarity) ? rarity : rarities[0];
+  const items = [{ id: resId('stash', r), count: Math.round(rnd(1, 3)) }];
+  if (Math.random() < 0.5) items.push({ id: `j_${pick(['gear', 'wire', 'compass', 'radio'])}`, count: Math.round(rnd(1, 2)) });
+  return items;
+}
+
+export function lootStash(world, stashId) {
+  const stash = world.stashes.find((s) => s.id === stashId);
+  if (!stash || stash.found) return [];
+  stash.found = true;
+  return rollStashLoot(world, stash);
 }
 
 // Текущая зона заражения под игроком (если он внутри нескольких — берём самую опасную по уровню)

@@ -178,6 +178,10 @@ export function applyDeathLoss(state) {
 export const countAmmo = (state, ammoId) =>
   state.inventory.reduce((s, it) => s + (it.id === ammoId ? it.count : 0), 0);
 
+// Есть ли в инвентаре вылазки хотя бы одна штука предмета (металлоискатель и т.п. — не экипируется,
+// просто должен лежать с собой)
+export const hasItem = (state, id) => state.inventory.some((it) => it.id === id);
+
 // Забирает до n патронов из инвентаря, возвращает сколько забрано
 export function takeAmmo(state, ammoId, n) {
   let left = n;

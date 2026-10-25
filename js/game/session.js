@@ -2,8 +2,8 @@
 import { h } from '../core/dom.js';
 import { getState, mutate } from '../core/state.js';
 import { computeStats } from './stats.js';
-import { countAmmo, takeAmmo, applyDeathLoss, addToInventory } from './inventory.js';
-import { createWorld, step, setPlayerStats, damagePlayer } from './sim/world.js';
+import { countAmmo, takeAmmo, applyDeathLoss, addToInventory, hasItem } from './inventory.js';
+import { createWorld, step, setPlayerStats, damagePlayer, lootStash } from './sim/world.js';
 import { startSiege } from './sim/siege.js';
 import { lootCrate } from './sim/spots.js';
 import { createRenderer } from './render/renderer.js';
@@ -26,7 +26,7 @@ function wantsTouch(mode) {
 
 const snapWeapon = (inst) => (inst ? { id: inst.id, dur: inst.dur, mag: inst.mag } : null);
 
-export function startGame({ root, mapId = 'swamp', onEnd }) {
+export function startGame({ root, mapId = 'swamp', onEnd, arrive }) {
   const map = MAPS[mapId];
   const st0 = getState();
   const touch = wantsTouch(st0.settings.controls);
@@ -36,9 +36,10 @@ export function startGame({ root, mapId = 'swamp', onEnd }) {
   const host = {
     ammoCount: (id) => countAmmo(getState(), id),
     takeAmmo: (id, n) => mutate((st) => ({ ok: true, taken: takeAmmo(st, id, n) })).taken,
+    hasItem: (id) => hasItem(getState(), id),
   };
   const world = createWorld({
-    map, host,
+    map, host, arrive,
     snapshot: {
       stats: computeStats(st0),
       weapons: { weapon: snapWeapon(st0.slots.weapon), secondary: snapWeapon(st0.slots.secondary) },
@@ -69,19 +70,36 @@ export function startGame({ root, mapId = 'swamp', onEnd }) {
     });
   }
 
-  function end(reason) {
-    if (ended) return;
-    ended = true;
+  // общая часть остановки сессии: отменяет кадр, отключает ввод/рендер/подписки, убирает DOM —
+  // используется и при обычном завершении (end), и при переходе на другую карту (crossTransition)
+  function teardown() {
     cancelAnimationFrame(raf);
-    commit();
-    // при смерти инвентарь вылазки теряется, но личные непередаваемые вещи (кроме бартерных ресурсов)
-    // возвращаются на склад бункера, а не пропадают навсегда
-    if (reason === 'death') mutate((st) => { applyDeathLoss(st); return { ok: true }; });
     input.dispose(); renderer.dispose(); offOverlayRefresh?.();
     window.removeEventListener('resize', onResize);
     document.removeEventListener('visibilitychange', onVisibility);
     ui.el.remove();
+  }
+
+  function end(reason) {
+    if (ended) return;
+    ended = true;
+    commit();
+    // при смерти инвентарь вылазки теряется, но личные непередаваемые вещи (кроме бартерных ресурсов)
+    // возвращаются на склад бункера, а не пропадают навсегда
+    if (reason === 'death') mutate((st) => { applyDeathLoss(st); return { ok: true }; });
+    teardown();
     onEnd?.({ reason });
+  }
+
+  // переход на другую карту: сохраняем снаряжение, разбираем текущую сессию и тут же поднимаем новую
+  // на карте e.to с явной точкой появления — тот же onEnd, так что смерть/выход из бункера на новой
+  // карте по-прежнему корректно возвращают управление наружу (main.js), без изменений там
+  function crossTransition(e) {
+    if (ended) return;
+    ended = true;
+    commit();
+    teardown();
+    startGame({ root, mapId: e.to, arrive: { x: e.arriveX, y: e.arriveY }, onEnd });
   }
 
   function setPaused(v) {
@@ -103,7 +121,8 @@ export function startGame({ root, mapId = 'swamp', onEnd }) {
       if (ended) return;
       if (e.type === 'exit') end('hatch');
       else if (e.type === 'death') end('death');
-      else if (e.type === 'transition_locked') ui.toast('Путь на север пока закрыт: новая локация появится позже');
+      else if (e.type === 'transition') { crossTransition(e); return; }
+      else if (e.type === 'transition_locked') ui.toast('Путь закрыт: эта часть карты пока недоступна');
       else if (e.type === 'no_ammo') ui.toast('В инвентаре нет патронов');
       else if (e.type === 'jam') ui.toast('Оружие клинит: нужна полная перезарядка');
       else if (e.type === 'weapon_broken') { ui.toast('Оружие сломано'); commit(); }
@@ -117,6 +136,13 @@ export function startGame({ root, mapId = 'swamp', onEnd }) {
           mutate((st) => { for (const it of items) addToInventory(st, it); return { ok: true }; });
           const names = items.map((it) => getItem(it.id).name).join(', ');
           ui.toast(`Добыча: ${names}`);
+        }
+      } else if (e.type === 'loot_stash') {
+        const items = lootStash(world, e.stashId);
+        if (items.length) {
+          mutate((st) => { for (const it of items) addToInventory(st, it); return { ok: true }; });
+          const names = items.map((it) => getItem(it.id).name).join(', ');
+          ui.toast(`Прикоп раскопан: ${names}`);
         }
       } else if (e.type === 'spot_cleared') {
         ui.toast('Точка зачищена: добыча ждёт в ящике');
@@ -161,7 +187,7 @@ export function startGame({ root, mapId = 'swamp', onEnd }) {
       hp: p.hp, maxHp: p.stats.health, zone: renderer.zoneRarity(p.y),
       weapon: w && { name: w.def.name, mag: w.mag, reserve: countAmmo(getState(), w.def.ammo), durPct: (w.dur / w.def.durMax) * 100, jammed: w.jammed },
       reloadPct: p.reloadT > 0 ? 1 - p.reloadT / p.reloadTotal : null, reloadKind: p.reloadKind,
-      drawing: p.drawT > 0, prompt: p.prompt, contam: p.contam,
+      drawing: p.drawT > 0, prompt: p.prompt, contam: p.contam, detector: p.hasDetector ? p.detector : null,
     };
   };
 

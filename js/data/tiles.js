@@ -8,6 +8,7 @@ export const TILES = {
   'w': { name: 'мелководье',     color: '#28494c', speed: 0.55 },
   'W': { name: 'глубокая вода',  color: '#132c2e', solid: true },                      // не пройти, пули летят над водой
   'T': { name: 'дерево',         color: '#1d3520', solid: true, blocksBullets: true },
+  'd': { name: 'сухое дерево',   color: '#2c2a24', solid: true, blocksBullets: true },  // Мёртвый лес: без кроны
   '#': { name: 'руины',          color: '#4b4b47', solid: true, blocksBullets: true },
   '=': { name: 'тропа',          color: '#584e3d', speed: 1.1 },
   'b': { name: 'территория бункера', color: '#2a322f', speed: 1 },

@@ -39,6 +39,15 @@ export function createRenderer(canvas, map) {
       c.fillStyle = '#152a18'; c.beginPath(); c.arc(px + S / 2, py + S / 2 + 2, S * 0.46, 0, 7); c.fill();
       c.fillStyle = '#21402a'; c.beginPath(); c.arc(px + S * 0.45, py + S * 0.42, S * 0.36, 0, 7); c.fill();
       c.fillStyle = '#2d5233'; c.beginPath(); c.arc(px + S * 0.4, py + S * 0.36, S * 0.16, 0, 7); c.fill();
+    } else if (t === 'd') {
+      fill(ground.color);
+      const bx = px + S * (0.4 + v * 0.2), by = py + S * 0.92;
+      c.strokeStyle = '#1a1814'; c.lineWidth = Math.max(1.5, S * 0.07); c.lineCap = 'round';
+      c.beginPath(); c.moveTo(bx, by); c.lineTo(bx - S * 0.04, py + S * 0.18); c.stroke();
+      c.lineWidth = Math.max(1, S * 0.04);
+      c.beginPath(); c.moveTo(bx - S * 0.02, py + S * 0.45); c.lineTo(bx - S * 0.22, py + S * 0.22); c.stroke();
+      c.beginPath(); c.moveTo(bx - S * 0.01, py + S * 0.32); c.lineTo(bx + S * 0.2, py + S * 0.12); c.stroke();
+      c.lineCap = 'butt';
     } else if (t === '#') {
       fill(base.color);
       c.fillStyle = 'rgba(255,255,255,.07)'; c.fillRect(px, py, S, 3);

@@ -30,12 +30,21 @@
 .gtoast { position: absolute; left: 50%; top: calc(62px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); max-width: 90vw; padding: 8px 14px; background: rgba(20, 28, 25, .9); border-left: 3px solid var(--accent); font-size: 13px; pointer-events: none; text-align: center; }
 .gtoast.warn { border-left-color: #8fd08f; background: rgba(40, 46, 20, .92); }
 
-.contam { position: absolute; left: 0; right: 0; top: 40px; display: flex; justify-content: center; pointer-events: none; }
+.hud-mid { position: absolute; left: 0; right: 0; top: 40px; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.contam { display: flex; justify-content: center; gap: 6px; }
 .contam-chip { display: flex; align-items: center; gap: 6px; padding: 3px 10px; background: rgba(20, 28, 25, .75); border-left: 3px solid #8fd08f; font-size: 11.5px; }
 .contam-chip .bar { width: 64px; height: 6px; background: rgba(0, 0, 0, .5); }
 .contam-chip .bar i { background: #8fd08f; }
 .contam-chip.crit .bar i { background: #ff6b5e; }
 .contam-chip.crit { border-left-color: #ff6b5e; }
+
+/* Металлоискатель: непрерывный сигнал 0-100% до ближайшего нераскопанного прикопа; пульсирует, когда рядом */
+.detector { display: flex; align-items: center; gap: 6px; padding: 3px 10px; background: rgba(20, 28, 25, .75); border-left: 3px solid #e3a93a; font-size: 11.5px; }
+.detector .bar { width: 64px; height: 6px; background: rgba(0, 0, 0, .5); }
+.detector .bar i { background: #e3a93a; transition: width .2s ease; }
+.detector.hot { border-left-color: #ffcf6b; animation: detector-pulse .5s ease-in-out infinite; }
+.detector.hot .bar i { background: #ffcf6b; }
+@keyframes detector-pulse { 0%, 100% { background: rgba(20, 28, 25, .75); } 50% { background: rgba(227, 169, 58, .32); } }
 
 /* Сенсорное управление: левая половина — движение, правая — прицел и стрельба */
 .zone-move, .zone-aim { position: absolute; top: 64px; bottom: 0; touch-action: none; }

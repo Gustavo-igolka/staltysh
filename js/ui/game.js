@@ -18,6 +18,9 @@ export function buildGameUI({ touch, dev }) {
   const prompt = h('button', { class: 'prompt', hidden: true });
   const toastEl = h('div', { class: 'gtoast', hidden: true });
   const contamBox = h('div', { class: 'contam' });
+  const detectorFill = h('i'); const detectorText = h('span');
+  const detectorBox = h('div', { class: 'detector', hidden: true }, h('span', null, '📡'), detectorText, h('div', { class: 'bar detector-bar' }, detectorFill));
+  const hudMid = h('div', { class: 'hud-mid' }, contamBox, detectorBox);
 
   const top = h('div', { class: 'hud-top' },
     h('div', { class: 'hp' }, h('div', { class: 'bar hp-bar' }, hpFill), hpText),
@@ -54,7 +57,7 @@ export function buildGameUI({ touch, dev }) {
   const el = h('div', { class: 'game' + (touch ? ' touch' : '') },
     canvas, h('div', { class: 'game-vignette' }),
     zoneMove, zoneAim, stickMove, stickAim,
-    top, contamBox, weapon, prompt, btnFire, btnReload, btnSwap, devBox, toastEl, pauseLayer, overlay);
+    top, hudMid, weapon, prompt, btnFire, btnReload, btnSwap, devBox, toastEl, pauseLayer, overlay);
 
   let toastT = null;
   return {
@@ -97,6 +100,15 @@ export function buildGameUI({ touch, dev }) {
           h('span', null, CONTAM_LABELS[type] ?? type),
           h('div', { class: 'bar' }, h('i', { style: { width: `${Math.min(100, val)}%` } })))));
       zoneChip.style.setProperty('--rc', rarityCss(v.zone.rarity));
+      if (v.detector === null || v.detector === undefined) {
+        detectorBox.hidden = true;
+      } else {
+        detectorBox.hidden = false;
+        const pct = Math.round(v.detector * 100);
+        detectorFill.style.width = `${pct}%`;
+        detectorText.textContent = v.detector > 0.03 ? `Сигнал: ${pct}%` : 'Сигнала нет';
+        detectorBox.classList.toggle('hot', v.detector >= 0.75);
+      }
       if (v.weapon) {
         weapon.hidden = false;
         wName.textContent = v.weapon.name;
