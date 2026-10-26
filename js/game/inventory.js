@@ -1,7 +1,7 @@
 // Логика инвентаря: сетка с весом, склад, слоты персонажа. Чистые функции, без DOM.
 import { getItem } from '../data/items.js';
 import { BASE_STATS } from '../data/player.js';
-import { activeStats } from './durability.js';
+import { activeStats, tieredWeightBonus } from './durability.js';
 import { uid, clamp } from '../core/util.js';
 
 export const BASE_GRID = { w: 8, h: 10 }; // сетка большая и одинаковая: ограничивает вес, а не место
@@ -11,7 +11,7 @@ const fail = (msg) => ({ ok: false, msg });
 // Лимит веса: 50 кг базово + прибавка брони + прибавка рюкзака/сумки. Размер сетки от рюкзака не зависит.
 export function gridFor(backpack, armor) {
   const carry = activeStats(armor).carry ?? 0; // сломанная броня прибавки к весу не даёт
-  const bag = backpack ? (getItem(backpack.id).weightBonus || 0) : 0;
+  const bag = backpack ? tieredWeightBonus(backpack.id, backpack.tier) : 0;
   return { w: BASE_GRID.w, h: BASE_GRID.h, maxWeight: BASE_STATS.carryWeight + carry + bag };
 }
 export const getGrid = (state) => gridFor(state.slots.backpack, state.slots.armor);

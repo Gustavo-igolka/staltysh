@@ -4,6 +4,7 @@ import { TILE, tileAt } from '../../data/tiles.js';
 import { ENEMY_KINDS } from '../../data/enemies.js';
 import { getItem, RES_TYPES, resId } from '../../data/items.js';
 import { effectiveZoneLevel } from '../stats.js';
+import { tieredItemDef } from '../durability.js';
 import { stepNpc } from './ai.js';
 import { createSpots, stepSpots, lootCrate } from './spots.js';
 import { stepSiege } from './siege.js';
@@ -64,8 +65,10 @@ export function createWorld({ map, host, snapshot, arrive }) {
 
 function makeWeapon(slot, w) {
   if (!w) return null;
-  const def = getItem(w.id);
-  return { slot, id: w.id, def, dur: w.dur ?? def.durMax, mag: Number.isFinite(w.mag) ? w.mag : 0, jammed: false, brokenNotified: (w.dur ?? def.durMax) <= 0 };
+  // def строится на ступень w.tier сразу (урон/магазин/дальность/прочность) — дальше по бою везде
+  // читают w.def.stats/w.def.durMax напрямую, так что апгрейд из бартера виден в бою без доп. правок
+  const def = tieredItemDef(w.id, w.tier);
+  return { slot, id: w.id, def, tier: w.tier ?? 0, dur: w.dur ?? def.durMax, mag: Number.isFinite(w.mag) ? w.mag : 0, jammed: false, brokenNotified: (w.dur ?? def.durMax) <= 0 };
 }
 
 function addPlayer(world, id, x, y, snap) {
@@ -74,7 +77,7 @@ function addPlayer(world, id, x, y, snap) {
     id, x, y, r: SIM.playerRadius, angle: -Math.PI / 2, alive: true,
     stats: snap.stats, hp: snap.stats.health, lastDamageT: -99, bleeding: false,
     weapons, active: weapons.weapon ? 'weapon' : (weapons.secondary ? 'secondary' : null),
-    armor: snap.armor ? { id: snap.armor.id, dur: snap.armor.dur ?? getItem(snap.armor.id).durMax, def: getItem(snap.armor.id) } : null,
+    armor: snap.armor ? { id: snap.armor.id, tier: snap.armor.tier ?? 0, dur: snap.armor.dur ?? tieredItemDef(snap.armor.id, snap.armor.tier).durMax, def: tieredItemDef(snap.armor.id, snap.armor.tier) } : null,
     cooldown: 0, reloadT: 0, reloadTotal: 0, reloadKind: null, drawT: 0, flash: 0,
     moving: false, prompt: null, zone: null, contam: { rad: 0, bio: 0, psi: 0, temp: 0 },
     input: { moveX: 0, moveY: 0, aim: null, firing: false, reload: false, swap: false, select: null, interact: false },

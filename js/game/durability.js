@@ -1,9 +1,52 @@
 // Прочность оружия, доп. оружия и брони. Сломанная вещь не даёт характеристик, но остаётся мёртвым грузом.
-import { getItem } from '../data/items.js';
+//
+// Плюс — масштабирование по ступени улучшения (TIERS в data/items.js, 0..6: серый-серый-синий-синий-
+// фиолетовый-фиолетовый-красный; ступень хранится в поле `tier` экземпляра предмета, апгрейд — в
+// js/game/economy.js → upgradeBarterItem). Это СИСТЕМА, а не финальный баланс: растут только «силовые»
+// характеристики (урон/магазин/дальность у оружия; защита/груз/лечение у брони и рюкзаков) и прочность.
+// Хендлинг (темп стрельбы, перезарядка, доставание, скорость в руках, шанс кровотечения, останавливающее
+// действие, множитель по мутантам) ступенью не меняется — апгрейд не должен менять «ощущение» вещи.
+// TIER_GROWTH — черновой множитель, финальные числа задаст отдельный балансировочный проход.
+import { getItem, TIERS } from '../data/items.js';
 
-export const durMax = (it) => getItem(it.id).durMax ?? 0;
+export const TIER_GROWTH = 0.15; // +15% к силовым характеристикам за ступень (черновое значение)
+const SCALES_WITH_TIER = new Set([
+  'dmg', 'mag', 'range',                              // оружие
+  'bullet', 'tear', 'blast', 'bleedProt',             // броня: защита
+  'rad', 'bio', 'psi', 'temp',                        // броня: заражения
+  'carry', 'regen',                                   // броня: груз, периодическое лечение
+]);
+
+export const tierMult = (tier = 0) => 1 + Math.max(0, Math.min(TIERS.length - 1, tier)) * TIER_GROWTH;
+
+// Статы предмета id на ступени tier (без учёта поломки — для этого есть activeStats(it))
+export function tieredStats(id, tier = 0) {
+  const base = getItem(id).stats ?? {};
+  const mult = tierMult(tier);
+  const out = {};
+  for (const [k, v] of Object.entries(base)) out[k] = SCALES_WITH_TIER.has(k) ? Math.round(v * mult) : v;
+  return out;
+}
+
+// Прибавка к весу у рюкзаков/сумок — поле вне stats, масштабируется так же
+export function tieredWeightBonus(id, tier = 0) {
+  const base = getItem(id).weightBonus ?? 0;
+  return base ? Math.round(base * tierMult(tier)) : 0;
+}
+
+export function durMax(it) {
+  const base = getItem(it?.id)?.durMax ?? 0;
+  return base ? Math.round(base * tierMult(it?.tier)) : 0;
+}
 export const hasDurability = (it) => durMax(it) > 0;
 export const durCur = (it) => (hasDurability(it) ? Math.max(0, Math.min(durMax(it), it.dur ?? durMax(it))) : 0);
 export const isBroken = (it) => !!it && hasDurability(it) && durCur(it) <= 0;
 // Характеристики предмета, которые реально действуют (у сломанного их нет)
-export const activeStats = (it) => (it && !isBroken(it) ? (getItem(it.id).stats ?? {}) : {});
+export const activeStats = (it) => (it && !isBroken(it) ? tieredStats(it.id, it.tier) : {});
+
+// Полный «эффективный» предмет (бой и отображение): база + масштаб по ступени во всех трёх местах сразу
+export function tieredItemDef(id, tier = 0) {
+  const d = getItem(id);
+  return { ...d, stats: tieredStats(id, tier), durMax: Math.round((d.durMax ?? 0) * tierMult(tier)), weightBonus: tieredWeightBonus(id, tier) };
+}
+export const effectiveItem = (it) => tieredItemDef(it.id, it?.tier ?? 0);

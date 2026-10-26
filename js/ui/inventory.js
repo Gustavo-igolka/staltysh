@@ -2,6 +2,7 @@ import { h } from '../core/dom.js';
 import { getState, mutate } from '../core/state.js';
 import { getItem, TYPE_NAMES, categoryOf } from '../data/items.js';
 import { getGrid, totalWeight, moveToInventory, moveToStash, equip, unequip } from '../game/inventory.js';
+import { effectiveItem } from '../game/durability.js';
 import { fmtKg } from '../core/util.js';
 import { ARMOR_CLASSES } from '../data/player.js';
 import { computeStats, blockedZoneLevel } from '../game/stats.js';
@@ -97,7 +98,7 @@ function statsPanel(s) {
 }
 
 function openItemSheet(it, where, slotKey) {
-  const d = getItem(it.id);
+  const d = effectiveItem(it); // статы с учётом ступени улучшения (durMax/stats/weightBonus)
   const key = rarityKey(it);
   let qty = it.count;
   const qtyEl = h('b', { class: 'qty-val' }, String(qty));

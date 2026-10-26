@@ -94,8 +94,10 @@
 .row-act { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; flex: none; }
 .panel .rows { margin-top: 0; }
 .branch .row { background: transparent; padding: 0; border: 0; }
-.ladder { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.ladder { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .ladder small { color: var(--muted); }
+.upgrade-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; flex: 1; min-width: 180px; }
+.upgrade-row small { flex: 1; min-width: 160px; line-height: 1.4; }
 .res { display: flex; flex-direction: column; gap: 3px; padding: 10px 0; border-top: 1px solid var(--line); }
 .res small { color: var(--muted); }
 

@@ -36,7 +36,7 @@ export function renderHome(root) {
     h('div', { class: 'modes' },
       modeButton('Открытый мир', 'Локация «Болото»: вылазка от люка бункера на север', () => emit('game:start')),
       modeButton('Рейтинг', 'Раунды с целью и таблица лидеров', () => toast('Рейтинг появится после открытого мира'), true)),
-    ratingNote ? h('p', { class: 'note' }, ratingNote) : null,
+    ...(ratingNote ? [h('p', { class: 'note' }, ratingNote)] : []),
 
     section('Снаряжение',
       h('ul', { class: 'loadout' }, SLOTS.map(([k, label]) => {

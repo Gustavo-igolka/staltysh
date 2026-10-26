@@ -24,7 +24,7 @@ function wantsTouch(mode) {
   return !!window.matchMedia?.('(pointer: coarse)').matches;
 }
 
-const snapWeapon = (inst) => (inst ? { id: inst.id, dur: inst.dur, mag: inst.mag } : null);
+const snapWeapon = (inst) => (inst ? { id: inst.id, dur: inst.dur, mag: inst.mag, tier: inst.tier ?? 0 } : null);
 
 export function startGame({ root, mapId = 'swamp', onEnd, arrive }) {
   const map = MAPS[mapId];
@@ -43,7 +43,7 @@ export function startGame({ root, mapId = 'swamp', onEnd, arrive }) {
     snapshot: {
       stats: computeStats(st0),
       weapons: { weapon: snapWeapon(st0.slots.weapon), secondary: snapWeapon(st0.slots.secondary) },
-      armor: st0.slots.armor ? { id: st0.slots.armor.id, dur: st0.slots.armor.dur } : null,
+      armor: st0.slots.armor ? { id: st0.slots.armor.id, dur: st0.slots.armor.dur, tier: st0.slots.armor.tier ?? 0 } : null,
     },
   });
   const p = world.players.p1;
