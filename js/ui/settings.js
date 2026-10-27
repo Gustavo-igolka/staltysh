@@ -5,6 +5,7 @@ import { cloudEnabled } from '../net/supabase.js';
 import { signOut, ensureProfile } from '../net/auth.js';
 import { ITEM_LIST, getItem } from '../data/items.js';
 import { addToStash } from '../game/inventory.js';
+import { DEFAULT_KEYS, KEY_LABELS, ALT_KEYS, keyName } from '../game/input.js';
 import { section, chips, toggle, refresh } from './common.js';
 import { confirmSheet } from './sheet.js';
 import { toast } from './toast.js';
@@ -12,10 +13,63 @@ import { toast } from './toast.js';
 const NICK_RE = /^[\p{L}\p{N}_\- ]{3,20}$/u;
 const CONTROLS = [['auto', 'Авто'], ['touch', 'Сенсорное'], ['keyboard', 'Клавиатура и мышь']];
 const QUALITY = [['low', 'Низкое'], ['medium', 'Среднее'], ['high', 'Высокое']];
+const TABS = [['general', 'Общее'], ['controls', 'Управление']];
+const RESERVED = new Set(Object.values(ALT_KEYS)); // запасные клавиши назначить нельзя
+
+let tab = 'general';
+
+// Переназначение клавиши: ждём следующее нажатие. Слушатель висит в фазе перехвата и гасит событие,
+// чтобы игра (она слушает окно) не приняла эту клавишу за команду.
+function rebind(action, btn) {
+  btn.textContent = 'Нажми клавишу…';
+  const onKey = (e) => {
+    e.preventDefault(); e.stopImmediatePropagation();
+    window.removeEventListener('keydown', onKey, true);
+    if (e.code === 'Escape') return refresh();
+    if (RESERVED.has(e.code)) { toast('Эта клавиша занята под запасное управление', 'warn'); return refresh(); }
+    mutate((st) => {
+      const cur = { ...DEFAULT_KEYS, ...st.settings.keys };
+      const other = Object.keys(cur).find((a) => a !== action && cur[a] === e.code);
+      const next = { ...cur, [action]: e.code };
+      if (other) next[other] = cur[action]; // конфликт: меняем местами
+      st.settings.keys = next;
+    });
+    refresh();
+  };
+  window.addEventListener('keydown', onKey, true);
+}
+
+function controlsSections(s, set) {
+  const kb = { ...DEFAULT_KEYS, ...s.settings.keys };
+  return [
+    section('Режим управления',
+      chips(CONTROLS, s.settings.controls, (v) => { set({ controls: v }); refresh(); }),
+      h('p', { class: 'muted small' }, 'Режим применяется при следующем заходе в открытый мир.')),
+    section('Клавиатура',
+      h('div', { class: 'rows' }, Object.keys(DEFAULT_KEYS).map((a) => {
+        const b = h('button', { class: 'btn small ghost' }, keyName(kb[a]));
+        b.onclick = () => rebind(a, b);
+        return h('div', { class: 'row' },
+          h('div', { class: 'row-main' }, h('b', null, KEY_LABELS[a])),
+          h('div', { class: 'row-act' }, b));
+      })),
+      h('p', { class: 'muted small' }, 'Клавиши привязаны к физическому положению, поэтому работают и на русской раскладке. Стрелки, F и P всегда работают как запасные. Стрельба мышью (ЛКМ) не меняется. Esc отменяет назначение.'),
+      h('button', { class: 'btn danger small', onclick: () => { set({ keys: {} }); refresh(); } }, 'Сбросить клавиши')),
+    section('Телефон',
+      toggle('Авто-прицел по направлению движения', s.settings.autoAim !== false, (v) => { set({ autoAim: v }); refresh(); })),
+  ];
+}
 
 export function renderSettings(root) {
   const s = getState();
   const set = (patch) => mutate((st) => { Object.assign(st.settings, patch); });
+  const title = h('h2', { class: 'screen-title' }, 'Настройки');
+  const tabs = chips(TABS, tab, (v) => { tab = v; refresh(); });
+
+  if (tab === 'controls') {
+    root.append(title, tabs, ...controlsSections(s, set));
+    return;
+  }
 
   const nickInput = h('input', { type: 'text', value: s.nickname, maxlength: 20, autocomplete: 'off', 'aria-label': 'Позывной' });
   const saveNick = async () => {
@@ -41,7 +95,8 @@ export function renderSettings(root) {
     : [h('p', { class: 'muted' }, 'Облако не подключено: прогресс хранится только в этом браузере. Чтобы включить вход и рейтинг, заполни js/config.js.')];
 
   root.append(
-    h('h2', { class: 'screen-title' }, 'Настройки'),
+    title,
+    tabs,
     section('Аккаунт',
       h('label', { class: 'field' }, h('span', null, 'Позывной'), nickInput),
       h('button', { class: 'btn small', onclick: saveNick }, 'Сохранить позывной'),
@@ -49,8 +104,6 @@ export function renderSettings(root) {
     section('Игра',
       toggle('Звуки', s.settings.sound, (v) => set({ sound: v })),
       toggle('Музыка', s.settings.music, (v) => set({ music: v })),
-      h('p', { class: 'muted' }, 'Управление в бою'),
-      chips(CONTROLS, s.settings.controls, (v) => set({ controls: v })),
       h('p', { class: 'muted' }, 'Качество графики'),
       chips(QUALITY, s.settings.quality, (v) => set({ quality: v }))),
     section('Данные',

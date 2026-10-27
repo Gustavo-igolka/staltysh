@@ -55,6 +55,10 @@
 .game.touch .gbtn.reload, .game.touch .gbtn.swap { position: absolute; right: calc(100px + env(safe-area-inset-right, 0px)); }
 .game.touch .gbtn.reload { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
 .game.touch .gbtn.swap { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); right: calc(170px + env(safe-area-inset-right, 0px)); }
+/* Аптечка (клавиша C на компьютере): над кнопкой огня, показывает, сколько аптечек и бинтов осталось */
+.game.touch .gbtn.heal { position: absolute; right: calc(24px + env(safe-area-inset-right, 0px)); bottom: calc(104px + env(safe-area-inset-bottom, 0px)); font-size: 16px; border-color: rgba(98, 194, 131, .7); background: rgba(24, 60, 38, .55); color: #9be3b4; }
+.game.touch .gbtn.heal:active { background: rgba(98, 194, 131, .5); }
+.game.touch .gbtn.heal.empty { opacity: .45; }
 .game.touch .hud-weapon { left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
 .game.touch .prompt { bottom: calc(90px + env(safe-area-inset-bottom, 0px)); }
 
