@@ -7,7 +7,7 @@ import { createWorld, step, setPlayerStats, damagePlayer, lootStash } from './si
 import { startSiege } from './sim/siege.js';
 import { lootCrate } from './sim/spots.js';
 import { createRenderer } from './render/renderer.js';
-import { createInput } from './input.js';
+import { createInput, DEFAULT_KEYS, keyName } from './input.js';
 import { buildGameUI } from '../ui/game.js';
 import { renderInventory } from '../ui/inventory.js';
 import { renderSettings } from '../ui/settings.js';
@@ -17,6 +17,8 @@ import { MAPS } from '../data/maps/index.js';
 
 const DT = 1 / 60;
 const NO_EDGES = { reload: false, swap: false, select: null, interact: false, map: false, inventory: false };
+const HEAL_COOLDOWN = 1;                  // секунд между использованиями аптечки
+const HEAL_ITEMS = ['medkit', 'bandage']; // сначала тратим аптечку, потом бинты
 
 function wantsTouch(mode) {
   if (mode === 'touch') return true;
@@ -25,12 +27,14 @@ function wantsTouch(mode) {
 }
 
 const snapWeapon = (inst) => (inst ? { id: inst.id, dur: inst.dur, mag: inst.mag, tier: inst.tier ?? 0 } : null);
+const healCount = (st) => st.inventory.reduce((s, it) => s + (HEAL_ITEMS.includes(it.id) ? it.count : 0), 0);
 
 export function startGame({ root, mapId = 'swamp', onEnd, arrive }) {
   const map = MAPS[mapId];
   const st0 = getState();
   const touch = wantsTouch(st0.settings.controls);
   const dev = !!st0.settings.dev;
+  const getKeys = () => ({ ...DEFAULT_KEYS, ...getState().settings.keys });
 
   // «мост» между симуляцией и сохранением игрока: только здесь мир касается state
   const host = {
@@ -52,11 +56,15 @@ export function startGame({ root, mapId = 'swamp', onEnd, arrive }) {
   root.replaceChildren(ui.el);
   const renderer = createRenderer(ui.canvas, map);
   world.camera = renderer.cam; // живая ссылка — нужна spots.js, чтобы проверять видимость точки на экране
-  const input = createInput({ zones: ui.zones, canvas: ui.canvas, touchMode: touch, playerScreen: () => renderer.worldToScreen(p.x, p.y), onStick: ui.setStick });
+  const input = createInput({
+    zones: ui.zones, canvas: ui.canvas, touchMode: touch, playerScreen: () => renderer.worldToScreen(p.x, p.y), onStick: ui.setStick,
+    getKeys, autoAim: () => getState().settings.autoAim !== false,
+  });
 
   let paused = false, ended = false, raf = 0, acc = 0, debugMarkers = false, snap = true;
   let last = performance.now(), lastCommit = last;
   let carry = { ...NO_EDGES };
+  let lastHealT = -99;
 
   // ── сохранение результата в состояние игрока ──
   function commit() {
@@ -68,6 +76,28 @@ export function startGame({ root, mapId = 'swamp', onEnd, arrive }) {
       if (p.armor && st.slots.armor) st.slots.armor.dur = p.armor.dur;
       return { ok: true };
     });
+  }
+
+  // ── лечение (клавиша «Аптечка», по умолчанию C): расходует аптечку, а если её нет — бинты из инвентаря вылазки ──
+  function useHeal() {
+    if (world.t - lastHealT < HEAL_COOLDOWN) return;
+    if (p.hp >= p.stats.health) { ui.toast('Здоровье полное'); return; }
+    const res = mutate((st) => {
+      const it = HEAL_ITEMS.map((id) => st.inventory.find((i) => i.id === id)).find(Boolean);
+      if (!it) return { ok: false, msg: 'Нет аптечек и бинтов в инвентаре' };
+      const heal = getItem(it.id).heal ?? 0;
+      const name = getItem(it.id).name;
+      it.count -= 1;
+      if (it.count <= 0) st.inventory.splice(st.inventory.indexOf(it), 1);
+      return { ok: true, heal, name };
+    });
+    if (!res.ok) { ui.toast(res.msg, 'warn'); return; }
+    const gained = Math.min(res.heal, p.stats.health - p.hp);
+    p.hp += gained;
+    p.bleeding = false;
+    lastHealT = world.t;
+    world.floaters.push({ x: p.x, y: p.y - p.r - 6, text: `+${Math.round(gained)}`, color: '#7dff9c', t: 0, life: 0.9 });
+    ui.toast(`${res.name}: +${Math.round(gained)} здоровья`);
   }
 
   // общая часть остановки сессии: отменяет кадр, отключает ввод/рендер/подписки, убирает DOM —
@@ -188,6 +218,7 @@ export function startGame({ root, mapId = 'swamp', onEnd, arrive }) {
       weapon: w && { name: w.def.name, mag: w.mag, reserve: countAmmo(getState(), w.def.ammo), durPct: (w.dur / w.def.durMax) * 100, jammed: w.jammed },
       reloadPct: p.reloadT > 0 ? 1 - p.reloadT / p.reloadTotal : null, reloadKind: p.reloadKind,
       drawing: p.drawT > 0, prompt: p.prompt, contam: p.contam, detector: p.hasDetector ? p.detector : null,
+      heals: healCount(getState()), interactKey: keyName(getKeys().interact),
     };
   };
 
@@ -201,6 +232,7 @@ export function startGame({ root, mapId = 'swamp', onEnd, arrive }) {
     if (inp.pause) { if (ui.overlayOpen) closeAnyOverlay(); else setPaused(!paused); }
     if (inp.inventory) { if (ui.overlayOpen) closeAnyOverlay(); else if (!paused) openMenuOverlay('Инвентарь', renderInventory); }
     if (inp.map) { if (ui.overlayOpen) closeAnyOverlay(); else if (!paused) openMapOverlay(); }
+    if (inp.heal && !paused && p.alive) useHeal();
     // одноразовые нажатия копим, пока не пройдёт хотя бы один шаг симуляции
     carry.reload ||= inp.reload; carry.swap ||= inp.swap; carry.interact ||= inp.interact; carry.select = inp.select ?? carry.select;
 
@@ -235,6 +267,7 @@ export function startGame({ root, mapId = 'swamp', onEnd, arrive }) {
   ui.prompt.addEventListener('click', () => input.press('interact'));
   ui.btnReload?.addEventListener('pointerdown', (e) => { e.preventDefault(); input.press('reload'); });
   ui.btnSwap?.addEventListener('pointerdown', (e) => { e.preventDefault(); input.press('swap'); });
+  ui.btnHeal?.addEventListener('pointerdown', (e) => { e.preventDefault(); input.press('heal'); });
   ui.btnFire?.addEventListener('pointerdown', (e) => { e.preventDefault(); input.setFire(true); });
   ui.btnFire?.addEventListener('pointerup', (e) => { e.preventDefault(); input.setFire(false); });
   ui.btnFire?.addEventListener('pointercancel', () => input.setFire(false));
