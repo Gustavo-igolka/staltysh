@@ -7,6 +7,8 @@ import { effectiveItem } from '../game/durability.js';
 import { fmt, fmtKg } from '../core/util.js';
 import { chips, statLine, rarityCss, rarityName, tierPips, refresh } from './common.js';
 import { openSheet } from './sheet.js';
+import { branchItemIds } from '../data/barter.js';
+import { branchTree } from './barter-tree.js';
 import { toast } from './toast.js';
 
 let tabId = 'weapon';
@@ -59,9 +61,11 @@ function branchCard(s, branch) {
           },
         }, buyCost.resources.length ? 'Купить' : `Купить · ${fmt(buyCost.money)}`))),
     ...(buyCost.resources.length ? [h('small', { class: 'cost' }, `Цена: ${costText(s, buyCost)}`)] : []),
-    h('div', { class: 'ladder' },
-      tierPips(tier ?? -1),
-      upgradeRow(s, id, target, tier, maxed)));
+    isExplicitBranch(id) && branchItemIds(id).length > 1
+      ? branchTree(s, id, target)
+      : h('div', { class: 'ladder' },
+        tierPips(tier ?? -1),
+        upgradeRow(s, id, target, tier, maxed)));
 }
 
 function upgradeRow(s, id, target, tier, maxed) {

@@ -158,3 +158,18 @@
 .warn-text { color: #ff9c8c; font-size: 12.5px; margin: 0 0 6px; }
 .owner-icon { font-style: normal; font-size: 11px; opacity: .85; }
 .owner-icon.inline { margin-left: 4px; }
+
+/* Дерево улучшений в бартере */
+.btree-wrap { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.btree { width: 100%; max-width: 360px; display: block; margin: 0 auto 6px; overflow: visible; }
+.btree-line { fill: none; stroke: #2b3631; stroke-width: 2; }
+.btree-line.lit { stroke: var(--accent, #e0a526); }
+.btree-node { cursor: pointer; outline: none; }
+.btree-node rect { fill: #151c19; stroke: var(--rc); stroke-width: 1.5; }
+.btree-node text { fill: #d8e0dc; font-size: 11px; font-family: inherit; pointer-events: none; }
+.btree-node .n2 { fill: var(--muted, #8b9a93); font-size: 10px; }
+.btree-node.locked { opacity: .45; }
+.btree-node.done rect { fill: #1d2622; }
+.btree-node.cur rect { fill: #243029; stroke-width: 3; }
+.btree-node.next rect { stroke-dasharray: 4 3; stroke-width: 2; }
+.btree-node:focus-visible rect { stroke: #fff; }
