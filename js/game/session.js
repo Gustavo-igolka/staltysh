@@ -3,7 +3,7 @@ import { h } from '../core/dom.js';
 import { getState, mutate } from '../core/state.js';
 import { computeStats } from './stats.js';
 import { countAmmo, takeAmmo, applyDeathLoss, addToInventory, hasItem } from './inventory.js';
-import { createWorld, step, setPlayerStats, damagePlayer, lootStash } from './sim/world.js';
+import { createWorld, step, setPlayerStats, damagePlayer, lootStash, setDevZone } from './sim/world.js';
 import { startSiege } from './sim/siege.js';
 import { lootCrate } from './sim/spots.js';
 import { createRenderer } from './render/renderer.js';
@@ -11,7 +11,7 @@ import { createInput, DEFAULT_KEYS, keyName } from './input.js';
 import { buildGameUI } from '../ui/game.js';
 import { renderInventory } from '../ui/inventory.js';
 import { renderSettings } from '../ui/settings.js';
-import { getItem } from '../data/items.js';
+import { getItem, ITEM_LIST, RARITY_ORDER, RES_TYPES, resId } from '../data/items.js';
 import { on } from '../core/events.js';
 import { MAPS } from '../data/maps/index.js';
 
@@ -28,6 +28,83 @@ function wantsTouch(mode) {
 
 const snapWeapon = (inst) => (inst ? { id: inst.id, dur: inst.dur, mag: inst.mag, tier: inst.tier ?? 0 } : null);
 const healCount = (st) => st.inventory.reduce((s, it) => s + (HEAL_ITEMS.includes(it.id) ? it.count : 0), 0);
+
+// ── Консоль разработчика: разбор и выполнение текстовых команд (dev-режим) ──
+// giveArmor <id|часть названия> | damage <bullet|tear|blast|true> <кол-во> |
+// hazard <rad|bio|psi|temp> <0..400> | giveResources [кол-во] | checkStats
+const DEV_DAMAGE_TYPES = ['bullet', 'tear', 'blast', 'true'];
+const DEV_HAZARD_TYPES = ['rad', 'bio', 'psi', 'temp'];
+
+function devGiveArmor(query, log) {
+  if (!query) return log('Использование: giveArmor a_4_cb_00 или giveArmor Эшка');
+  const q = query.toLowerCase();
+  // точное совпадение id → иначе по названию/id среди брони; getItem() возвращает заглушку для неизвестных id
+  const exact = ITEM_LIST().find((d) => d.id === query && d.type === 'armor');
+  const def = exact ?? ITEM_LIST().find((d) => d.type === 'armor' && (d.name.toLowerCase().includes(q) || d.id.toLowerCase().includes(q)));
+  if (!def) return log(`Броня «${query}» не найдена в базе данных`);
+  const res = mutate((st) => addToInventory(st, { id: def.id, count: 1 })).result ?? {};
+  if (res.ok === false) return log(`Не уместилось в инвентарь (${res.reason ?? 'нет места'})`);
+  log(`Выдана броня: ${def.name} (${def.id})`);
+}
+
+function devDamage(world, p, type, amountStr, log) {
+  const amount = Number(amountStr);
+  if (!DEV_DAMAGE_TYPES.includes(type)) return log(`Тип урона: ${DEV_DAMAGE_TYPES.join(', ')}`);
+  if (!Number.isFinite(amount) || amount <= 0) return log('Урон — положительное число. Пример: damage bullet 50');
+  damagePlayer(world, p, type, amount);
+  log(`${type} ${amount} → hp ${p.hp.toFixed(1)}/${p.stats.health}${type !== 'true' ? ` (пул ${Math.round(p.stats.pools[type])})` : ''}`);
+}
+
+function devHazard(world, p, type, levelStr, log) {
+  const level = Number(levelStr);
+  if (!DEV_HAZARD_TYPES.includes(type)) return log(`Тип заражения: ${DEV_HAZARD_TYPES.join(', ')}`);
+  if (!Number.isFinite(level) || level < 0 || level > 400) return log('Уровень — число 0..400. Пример: hazard rad 300');
+  setDevZone(world, type, level, Math.round(p.x / 32), Math.round(p.y / 32)); // вокруг игрока, координаты в тайлах
+  log(level === 0 ? `Зона ${type} отключена` : `Зона ${type} ${level} очков (${Math.ceil(level / 100)} ур.) вокруг игрока`);
+}
+
+function devGiveResources(countStr, log) {
+  const count = Math.max(1, Math.floor(Number(countStr) || 1));
+  let added = 0;
+  for (const type of Object.keys(RES_TYPES)) {
+    for (const rarity of RARITY_ORDER) {
+      const id = resId(type, rarity);
+      if (!getItem(id).name || getItem(id).type === 'junk') continue; // этого сочетания тип×редкость нет в базе
+      const res = mutate((st) => addToStash(st, { id, count })).result ?? {};
+      if (res.ok !== false) added++;
+    }
+  }
+  log(added ? `На склад: ${count} шт. каждого существующего ресурса (${added} позиций)` : 'Не хватило места на складе');
+}
+
+function devCheckStats(log) {
+  const st = getState();
+  const armor = st.slots.armor;
+  const stats = computeStats(st); // итоговые статы с учётом прочности (activeStats)
+  const def = armor ? tieredItemDef(armor.id, armor.tier ?? 0) : null;
+  console.table({ ...stats, pools: undefined });
+  if (!armor || !def) return log('Броня не надета. Итог без брони: ' + JSON.stringify(stats.pools));
+  const blocked = Object.fromEntries(DEV_HAZARD_TYPES.map((t) => [t, blockedZoneLevel(stats[t])]));
+  log(`Броня: ${def.name} (${armor.id}, ступень ${armor.tier ?? 0}, прочн. ${Math.round(armor.dur)}/${def.durMax})\n` +
+    `Пули/разрыв/взрыв: ${stats.bullet}/${stats.tear}/${stats.blast} → пулы ${JSON.stringify(stats.pools)}\n` +
+    `Фильтры (очки → закрытый уровень зоны): rad ${stats.rad}→${blocked.rad}, bio ${stats.bio}→${blocked.bio}, psi ${stats.psi}→${blocked.psi}, temp ${stats.temp}→${blocked.temp}\n` +
+    `Скорость ${stats.speed}%, живучесть ${stats.survivability}%, кровот. защита ${stats.bleedProt}%`);
+}
+
+function runDevCommand(line, log) {
+  if (!line) return;
+  const [cmd, ...args] = line.split(/\s+/);
+  const world = window.__world;
+  const p = world?.players?.p1;
+  switch (cmd.toLowerCase()) {
+    case 'givearmor': return devGiveArmor(args.join(' '), log);
+    case 'damage': return devDamage(world, p, args[0], args[1], log);
+    case 'hazard': return devHazard(world, p, args[0], args[1], log);
+    case 'giveresources': return devGiveResources(args[0], log);
+    case 'checkstats': return devCheckStats(log);
+    default: return log(`Неизвестная команда: ${cmd}. Доступны: giveArmor, damage, hazard, giveResources, checkStats`);
+  }
+}
 
 export function startGame({ root, mapId = 'swamp', onEnd, arrive }) {
   const map = MAPS[mapId];
@@ -281,6 +358,15 @@ export function startGame({ root, mapId = 'swamp', onEnd, arrive }) {
     b('Лечить', () => { p.hp = p.stats.health; });
     b('Метки точек', () => { debugMarkers = !debugMarkers; });
     b('Осада разлома рядом', () => { startSiege(world, p.x + 4 * 32, p.y); });
+
+    // ── Консоль разработчика: текстовые команды для теста баланса брони/заражения/бартера ──
+    // Строка ввода и вывод — в ui.devBox (панель есть только при dev-режиме).
+    const log = (msg) => { console.log(`[dev] ${msg}`); ui.devOut.textContent = msg; };
+    const cmdInput = h('input', {
+      class: 'devcmd', type: 'text', placeholder: 'Команда: giveArmor / damage / hazard / giveResources / checkStats',
+      onkeydown: (e) => { e.stopPropagation(); if (e.key === 'Enter') runDevCommand(e.target.value.trim(), log); },
+    });
+    ui.devBox.append(h('div', { class: 'devrow' }, cmdInput), ui.devOut);
   }
 
   ui.update(view());
