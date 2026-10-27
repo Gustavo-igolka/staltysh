@@ -159,17 +159,24 @@
 .owner-icon { font-style: normal; font-size: 11px; opacity: .85; }
 .owner-icon.inline { margin-left: 4px; }
 
-/* Дерево улучшений в бартере */
+/* Дерево бартера */
 .btree-wrap { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
-.btree { width: 100%; max-width: 360px; display: block; margin: 0 auto 6px; overflow: visible; }
-.btree-line { fill: none; stroke: #2b3631; stroke-width: 2; }
-.btree-line.lit { stroke: var(--accent, #e0a526); }
+.btree-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 8px; -webkit-overflow-scrolling: touch; }
+.btree { display: block; max-width: none; }
+.btree-line { fill: none; stroke: #2b3631; stroke-width: 2; stroke-dasharray: 3 4; }
+.btree-line.open { stroke: #5b6b63; }
+.btree-line.lit { stroke: var(--accent); stroke-dasharray: none; }
 .btree-node { cursor: pointer; outline: none; }
-.btree-node rect { fill: #151c19; stroke: var(--rc); stroke-width: 1.5; }
+.btree-node .card { fill: #151c19; stroke: var(--rc); stroke-width: 1.5; }
 .btree-node text { fill: #d8e0dc; font-size: 11px; font-family: inherit; pointer-events: none; }
+.btree-node .n1 { font-weight: 600; }
 .btree-node .n2 { fill: var(--muted, #8b9a93); font-size: 10px; }
-.btree-node.locked { opacity: .45; }
-.btree-node.done rect { fill: #1d2622; }
-.btree-node.cur rect { fill: #243029; stroke-width: 3; }
-.btree-node.next rect { stroke-dasharray: 4 3; stroke-width: 2; }
-.btree-node:focus-visible rect { stroke: #fff; }
+.btree-node .btn { fill: #2a2412; stroke: var(--accent); stroke-width: 1; }
+.btree-node .n3 { fill: var(--accent); font-size: 10px; }
+.btree-node.locked { opacity: .5; }
+.btree-node.locked .btn { fill: #1a201d; stroke: #2b3631; }
+.btree-node.locked .n3 { fill: var(--muted, #8b9a93); }
+.btree-node.have .card { fill: #1d2a23; }
+.btree-node.have .btn { fill: #1d2a23; stroke: #3d5a49; }
+.btree-node.have .n3 { fill: #8fd3a8; }
+.btree-node:focus-visible .card { stroke: #fff; }

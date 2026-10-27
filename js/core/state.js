@@ -21,6 +21,7 @@ export function defaultState(nickname = 'Выживший') {
       createItem('j_dosim', 1),
     ],
     pass: { season: 1, xp: 0, claimed: [], coupons: [], pendingRedChoice: false },
+    unlocked: [],   // вещи, которые уже покупались в бартере (открывают следующие в дереве)
     skins: [],      // открытые косметические скины (донатные кейсы), на статы не влияют
     skinSel: {},    // какой скин надет на какую вещь: { id вещи: id скина }
     settings: { sound: true, music: true, controls: 'auto', quality: 'high', dev: false },
@@ -49,6 +50,7 @@ function migrateFields(base, saved) {
     slots: { ...base.slots, ...saved.slots },
     pass: { ...base.pass, ...saved.pass },
     settings: { ...base.settings, ...saved.settings },
+    unlocked: Array.isArray(saved.unlocked) ? saved.unlocked : [],
     skins: Array.isArray(saved.skins) ? saved.skins : [],
     skinSel: { ...(saved.skinSel ?? {}) },
     inventory: Array.isArray(saved.inventory) ? saved.inventory : [],

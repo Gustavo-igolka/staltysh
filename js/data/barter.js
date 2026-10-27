@@ -36,3 +36,11 @@ export function branchItemIds(rootId) {
   return out;
 }
 export const isExplicitBranch = (rootId) => !!getItem(rootId).fixedTier;
+
+// К какой ветке относится предмет (корень ветки) и какие предметы ведут в него
+export const rootOf = (id) => allBranches().find((b) => branchItemIds(b.chain[0]).includes(id))?.chain[0] ?? null;
+export const isBarterNode = (id) => rootOf(id) !== null;
+export const parentsOf = (id) => {
+  const root = rootOf(id);
+  return root ? branchItemIds(root).filter((p) => (getItem(p).next ?? []).includes(id)) : [];
+};
