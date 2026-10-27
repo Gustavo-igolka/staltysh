@@ -92,31 +92,36 @@ function pay(state, cost) {
   for (const r of cost.resources) removeFromList(state.stash, r.id, r.amount);
 }
 
-// Открыта ли вещь в дереве бартера: уже покупалась или лежит у игрока (слоты, инвентарь, склад)
-export function isUnlocked(state, itemId) {
-  if (state.unlocked.includes(itemId)) return true;
-  return Object.values(state.slots).some((s) => s?.id === itemId)
-    || state.inventory.some((it) => it.id === itemId) || state.stash.some((it) => it.id === itemId);
-}
-
-// Можно ли покупать вещь: корень ветки — всегда, остальные — когда куплена любая вещь, ведущая в неё
-export function nodeAvailable(state, itemId) {
+// Вещь-ингредиент: предыдущая в цепочке, берётся только со склада. Если таких несколько — самая потрёпанная.
+// Корень ветки, прямые покупки (Сверхтяж, Стриж) и оружие ингредиента не требуют.
+export function ingredientFor(state, itemId) {
   const parents = parentsOf(itemId);
-  return parents.length === 0 || parents.some((p) => isUnlocked(state, p));
+  if (!parents.length) return { needed: false, have: 0, parentId: null };
+  let best = null, have = 0;
+  for (const it of state.stash) {
+    if (!parents.includes(it.id)) continue;
+    have += it.count;
+    if (!best || (it.dur ?? Infinity) < (best.dur ?? Infinity)) best = it;
+  }
+  return { needed: true, have, parentId: parents[0], item: best };
 }
 
-// Бартер: каждая вещь покупается отдельно — деньги (+ ресурсы), предмет попадает на склад.
-// Предыдущая вещь дерева не тратится и не заменяется, она лишь открывает следующую.
+// Бартер: каждая вещь покупается отдельно и сколько угодно раз. Цена — деньги + ресурсы своей редкости
+// + предыдущая вещь цепочки (она тратится). Белая и прямые покупки — только деньги/ресурсы.
 export function buyBarterItem(state, itemId) {
   if (!isBarterNode(itemId)) return fail('Этого нет в бартере');
-  if (!nodeAvailable(state, itemId)) return fail('Сначала купи предыдущую вещь в дереве');
   const d = getItem(itemId);
+  const ing = ingredientFor(state, itemId);
+  if (ing.needed && !ing.item) return fail(`Нужна вещь на складе: ${getItem(ing.parentId).name}`);
   const cost = d.fixedTier ? explicitCost(itemId) : { money: d.price, resources: [] };
   const why = canPay(state, cost);
   if (why) return fail(why);
   pay(state, cost);
+  if (ing.needed) {
+    ing.item.count -= 1;
+    if (ing.item.count <= 0) state.stash.splice(state.stash.indexOf(ing.item), 1);
+  }
   addToStash(state, { id: itemId, count: 1, tier: d.tier ?? 0 });
-  if (!state.unlocked.includes(itemId)) state.unlocked.push(itemId);
   return { ok: true };
 }
 

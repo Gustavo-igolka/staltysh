@@ -177,6 +177,5 @@
 .btree-node.locked .btn { fill: #1a201d; stroke: #2b3631; }
 .btree-node.locked .n3 { fill: var(--muted, #8b9a93); }
 .btree-node.have .card { fill: #1d2a23; }
-.btree-node.have .btn { fill: #1d2a23; stroke: #3d5a49; }
-.btree-node.have .n3 { fill: #8fd3a8; }
+.btree-node .n4 { fill: #8fd3a8; font-size: 11px; font-weight: 600; }
 .btree-node:focus-visible .card { stroke: #fff; }

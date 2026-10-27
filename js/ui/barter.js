@@ -19,7 +19,7 @@ export function renderBarter(root) {
 
   root.append(
     h('h2', { class: 'screen-title' }, 'Бартер'),
-    h('p', { class: 'muted' }, 'Каждая вещь покупается отдельно: деньги + бартерные ресурсы нужной редкости. Вещь в дереве открывается, когда куплена предыдущая; сама она при этом не тратится.'),
+    h('p', { class: 'muted' }, 'Белую вещь можно просто купить. Каждая следующая стоит денег, бартерных ресурсов её редкости и предыдущей вещи со склада (она тратится). Покупать можно сколько угодно раз, конец цепочки — красная.'),
     h('button', { class: 'btn small ghost', onclick: showResources }, 'Бартерные ресурсы'),
     chips(BARTER_TABS.map((t) => [t.id, t.name]), tab.id, (v) => { tabId = v; refresh(); }),
     chips(tab.sections.map((x) => [x.id, x.name]), section.id, (v) => { sectionByTab[tab.id] = v; refresh(); }),
