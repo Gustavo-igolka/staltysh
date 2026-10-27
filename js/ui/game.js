@@ -39,6 +39,7 @@ export function buildGameUI({ touch, dev }) {
   const btnFire = touch ? h('button', { class: 'gbtn fire', 'aria-label': 'Огонь' }, '●') : null;
   const btnReload = touch ? h('button', { class: 'gbtn reload', 'aria-label': 'Перезарядка' }, '⟳') : null;
   const btnSwap = touch ? h('button', { class: 'gbtn swap', 'aria-label': 'Смена оружия' }, '⇄') : null;
+  const btnHeal = touch ? h('button', { class: 'gbtn heal', 'aria-label': 'Аптечка' }, '✚') : null;
 
   // пауза
   const pauseLayer = h('div', { class: 'pause-layer', hidden: true });
@@ -57,11 +58,11 @@ export function buildGameUI({ touch, dev }) {
   const el = h('div', { class: 'game' + (touch ? ' touch' : '') },
     canvas, h('div', { class: 'game-vignette' }),
     zoneMove, zoneAim, stickMove, stickAim,
-    top, hudMid, weapon, prompt, btnFire, btnReload, btnSwap, devBox, toastEl, pauseLayer, overlay);
+    top, hudMid, weapon, prompt, btnFire, btnReload, btnSwap, btnHeal, devBox, toastEl, pauseLayer, overlay);
 
   let toastT = null;
   return {
-    el, canvas, pauseBtn, btnInv, btnMap, prompt, btnFire, btnReload, btnSwap, devBox, pauseLayer,
+    el, canvas, pauseBtn, btnInv, btnMap, prompt, btnFire, btnReload, btnSwap, btnHeal, devBox, pauseLayer,
     zones: { move: zoneMove, aim: zoneAim },
 
     openOverlay(title, render, onClose) {
@@ -109,6 +110,10 @@ export function buildGameUI({ touch, dev }) {
         detectorText.textContent = v.detector > 0.03 ? `Сигнал: ${pct}%` : 'Сигнала нет';
         detectorBox.classList.toggle('hot', v.detector >= 0.75);
       }
+      if (btnHeal) {
+        btnHeal.textContent = v.heals > 0 ? `✚${v.heals}` : '✚';
+        btnHeal.classList.toggle('empty', !v.heals);
+      }
       if (v.weapon) {
         weapon.hidden = false;
         wName.textContent = v.weapon.name;
@@ -126,7 +131,7 @@ export function buildGameUI({ touch, dev }) {
         wName.textContent = 'Нет оружия'; wAmmo.textContent = ''; wState.textContent = ''; reloadFill.parentElement.style.visibility = 'hidden';
       }
       prompt.hidden = !v.prompt;
-      if (v.prompt) prompt.textContent = (touch ? '' : '[E] ') + v.prompt.text;
+      if (v.prompt) prompt.textContent = (touch ? '' : `[${v.interactKey ?? 'E'}] `) + v.prompt.text;
     },
   };
 }
