@@ -49,7 +49,7 @@ export function addToInventory(state, proto) {
   const list = state.inventory;
   const def = getItem(proto.id);
   const { count, x, y, uid: _u, ...rest } = proto;
-  rest.tier = rest.tier ?? 0;
+  rest.tier = rest.tier ?? def.tier ?? 0;
   if (def.durMax && rest.dur === undefined) rest.dur = def.durMax;
   let left = count;
   let added = 0;
@@ -78,7 +78,7 @@ export function addToInventory(state, proto) {
 export function addToStash(state, proto) {
   const def = getItem(proto.id);
   const { count, x, y, uid: _u, ...rest } = proto;
-  rest.tier = rest.tier ?? 0;
+  rest.tier = rest.tier ?? def.tier ?? 0;
   if (def.durMax && rest.dur === undefined) rest.dur = def.durMax;
   let left = count;
   if (def.stack > 1) {

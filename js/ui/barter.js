@@ -1,8 +1,8 @@
 import { h } from '../core/dom.js';
 import { getState, mutate } from '../core/state.js';
 import { getItem, RARITY, RES_TYPES, GEAR_RESOURCES, TIERS } from '../data/items.js';
-import { BARTER_TABS } from '../data/barter.js';
-import { buyBarterItem, ownedCount, upgradeTarget, upgradeCost, upgradeBarterItem, countOwned } from '../game/economy.js';
+import { BARTER_TABS, isExplicitBranch } from '../data/barter.js';
+import { buyBarterItem, ownedCount, upgradeTarget, upgradeCost, upgradeBarterItem, countOwned, explicitCost, nextOptions } from '../game/economy.js';
 import { effectiveItem } from '../game/durability.js';
 import { fmt, fmtKg } from '../core/util.js';
 import { chips, statLine, rarityCss, rarityName, tierPips, refresh } from './common.js';
@@ -27,9 +27,16 @@ export function renderBarter(root) {
     ...section.branches.map((b) => branchCard(s, b)));
 }
 
+const costText = (s, cost) => [
+  `${fmt(cost.money)} монет`,
+  ...cost.resources.map((r) => `${fmt(r.amount)}× ${RES_TYPES[r.type].name} (${fmt(countOwned(s.stash, r.id))}/${fmt(r.amount)})`),
+].join(' · ');
+const canPayCost = (s, cost) => s.wallet.money >= cost.money && cost.resources.every((r) => countOwned(s.stash, r.id) >= r.amount);
+
 function branchCard(s, branch) {
   const id = branch.chain[0];
   const base = getItem(id);
+  const buyCost = base.fixedTier ? explicitCost(id) : { money: base.price, resources: [] };
   const owned = ownedCount(s, id);
   const target = upgradeTarget(s, id); // экипированная вещь или лучшая копия на складе — то, что апгрейдится
   const tier = target ? (target.tier ?? 0) : null;
@@ -40,23 +47,25 @@ function branchCard(s, branch) {
     h('h3', { class: 'panel-title' }, `Ветка «${branch.name}»`),
     h('div', { class: 'row' },
       h('div', { class: 'row-main' },
-        h('b', null, d.name, tier ? h('small', null, ` · ${rarityName(TIERS[tier])}`) : null),
+        h('b', null, d.name, tier !== null ? h('small', null, ` · ${rarityName(TIERS[tier])}`) : null),
         h('small', null, [statLine(d), `масса ${fmtKg(d.weight)} кг`, owned ? `у тебя: ${owned}` : null].filter(Boolean).join(' · ')),
         h('small', { class: 'desc' }, d.desc)),
       h('div', { class: 'row-act' },
         h('button', {
-          class: 'btn small primary', disabled: s.wallet.money < base.price,
+          class: 'btn small primary', disabled: !canPayCost(s, buyCost),
           onclick: () => {
             const r = mutate((st) => buyBarterItem(st, id));
             toast(r.ok ? `Куплено: ${base.name}. Предмет лежит на складе` : r.msg, r.ok ? 'ok' : 'warn');
           },
-        }, `Купить · ${fmt(base.price)}`))),
+        }, buyCost.resources.length ? 'Купить' : `Купить · ${fmt(buyCost.money)}`))),
+    ...(buyCost.resources.length ? [h('small', { class: 'cost' }, `Цена: ${costText(s, buyCost)}`)] : []),
     h('div', { class: 'ladder' },
       tierPips(tier ?? -1),
       upgradeRow(s, id, target, tier, maxed)));
 }
 
 function upgradeRow(s, id, target, tier, maxed) {
+  if (target && isExplicitBranch(id)) return explicitUpgradeRow(s, id, target, tier);
   if (!target) return h('small', null, 'Купи первую (серую) ступень — дальше её можно улучшать на складе бартерными ресурсами.');
   if (maxed) return h('small', null, 'Максимальная ступень достигнута.');
   const nextTier = tier + 1;
@@ -74,6 +83,28 @@ function upgradeRow(s, id, target, tier, maxed) {
         toast(r.ok ? `Улучшено до ступени «${rarityName(TIERS[r.tier])}»` : r.msg, r.ok ? 'ok' : 'warn');
       },
     }, 'Улучшить'));
+}
+
+// Ветка с отдельным предметом на каждой ступени: показываем, во что превратится вещь и сколько это стоит.
+// На развилке (Атлас / Оракул) кнопок две.
+function explicitUpgradeRow(s, rootId, target, tier) {
+  const options = nextOptions(target);
+  if (!options.length) return h('small', null, 'Максимальная ступень достигнута.');
+  return h('div', { class: 'upgrade-row fork' },
+    ...options.map((nid) => {
+      const nd = getItem(nid);
+      const cost = explicitCost(nid);
+      return h('div', { class: 'upgrade-opt' },
+        h('small', null, `→ ${nd.name} (${rarityName(TIERS[nd.tier])}): ${costText(s, cost)}`),
+        h('small', { class: 'desc' }, statLine(nd)),
+        h('button', {
+          class: 'btn small ghost', disabled: !canPayCost(s, cost),
+          onclick: () => {
+            const r = mutate((st) => upgradeBarterItem(st, rootId, nid));
+            toast(r.ok ? `Улучшено: ${nd.name}` : r.msg, r.ok ? 'ok' : 'warn');
+          },
+        }, options.length > 1 ? `Улучшить → ${nd.name.split('«')[1]?.replace('»', '') ?? nd.name}` : 'Улучшить'));
+    }));
 }
 
 function showResources() {

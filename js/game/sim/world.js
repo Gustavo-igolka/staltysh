@@ -152,7 +152,9 @@ function stepPlayer(world, p, dt) {
   // движение: скорость персонажа × штраф оружия в руках × местность
   let w = p.active ? p.weapons[p.active] : null;
   let speed = SIM.baseSpeed * (p.stats.speed / 100);
-  if (w) speed *= Math.max(0.3, (100 + (w.def.stats.speed ?? 0)) / 100);
+  // пассивка Сверхтяжа: пока броня цела, оружие в руках не замедляет
+  const armorOk = p.armor && p.armor.dur > 0 && p.armor.def.noWeaponPenalty;
+  if (w && !armorOk) speed *= Math.max(0.3, (100 + (w.def.stats.speed ?? 0)) / 100);
   speed *= tileAt(world.map, Math.floor(p.x / TILE), Math.floor(p.y / TILE)).speed ?? 1;
   let mx = inp.moveX, my = inp.moveY;
   const len = Math.hypot(mx, my);

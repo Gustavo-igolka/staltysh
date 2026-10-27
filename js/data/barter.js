@@ -1,3 +1,6 @@
+import { ARMOR_SECTIONS } from './armor.js';
+import { getItem } from './items.js';
+
 // Бартер: вкладка → подраздел → ветка (цепочка улучшений одной вещи).
 // Сейчас в цепочке только первая (слабая) ступень — её покупают за деньги.
 // Улучшения (серый → … → красный) добавим на этапе «углублённый бартер». Веток будет много — добавляй сюда.
@@ -16,24 +19,20 @@ export const BARTER_TABS = [
     { id: 'backpack', name: 'Рюкзаки', branches: [{ id: 'bp_old', name: 'Старый', chain: ['bp_1'] }] },
     { id: 'bag',      name: 'Сумки и контейнеры', branches: [{ id: 'bag_belt', name: 'Поясная', chain: ['bag_1'] }] },
   ] },
-  { id: 'armor', name: 'Броня', sections: [
-    { id: 'combat', name: 'Боевая', note: 'Против пуль, разрывов и взрывов.', branches: [
-      { id: 'com_light', name: 'Лёгкая', chain: ['a_light_1'] },
-      { id: 'com_med', name: 'Средняя', chain: ['a_med_1'] },
-      { id: 'com_heavy', name: 'Тяжёлая', chain: ['a_heavy_1'] },
-    ] },
-    { id: 'science', name: 'Научная', note: 'Защита от заражений. Только научная броня может закрыть 4 уровень зоны или сразу все заражения на 3 уровне.', branches: [
-      { id: 'sci_suit', name: 'Комбинезон', chain: ['a_sci_1'] },
-      { id: 'sci_iso', name: 'Изолятор', chain: ['a_sci_2'] },
-    ] },
-    { id: 'combo', name: 'Комбинированная', note: 'Что-то среднее между боевой и научной.', branches: [
-      { id: 'mix_jacket', name: 'Куртка', chain: ['a_mix_1'] },
-      { id: 'mix_field', name: 'Полевая', chain: ['a_mix_2'] },
-    ] },
-  ] },
+  { id: 'armor', name: 'Броня', sections: ARMOR_SECTIONS },
 ];
 
 export const allBranches = () =>
   BARTER_TABS.flatMap((t) => t.sections.flatMap((s) => s.branches));
 
 export const isBarterItem = (id) => allBranches().some((b) => b.chain[0] === id);
+export const branchOf = (rootId) => allBranches().find((b) => b.chain[0] === rootId);
+
+// Все предметы ветки с явными ступенями (корень + всё, куда он улучшается). Пусто для веток старого типа.
+export function branchItemIds(rootId) {
+  const out = [];
+  const walk = (id) => { if (out.includes(id)) return; out.push(id); (getItem(id).next ?? []).forEach(walk); };
+  walk(rootId);
+  return out;
+}
+export const isExplicitBranch = (rootId) => !!getItem(rootId).fixedTier;

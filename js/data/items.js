@@ -1,5 +1,6 @@
 // Все предметы игры. Баланс правится здесь, код трогать не нужно.
 import { uid } from '../core/util.js';
+import { ARMOR_DEFS } from './armor.js';
 
 // ── Редкости ────────────────────────────────────────────────
 export const RARITY = {
@@ -64,6 +65,9 @@ add({ id: 'a_sci_2', owner: 'locked',   name: 'Костюм-изолятор',  
 add({ id: 'a_mix_1', owner: 'locked',   name: 'Экспедиционная куртка',    type: 'armor', armorClass: 'combo',   slot: 'armor', w: 2, h: 2, weight: 5,  price: 1100, durMax: 90, stats: { bullet: 25, tear: 10, blast: 5, rad: 100, speed: -3, carry: 4 },               desc: 'Немного брони и немного защиты от радиации.' });
 add({ id: 'a_mix_2', owner: 'locked',   name: 'Полевой костюм',           type: 'armor', armorClass: 'combo',   slot: 'armor', w: 3, h: 3, weight: 8,  price: 1300, durMax: 110, stats: { bullet: 30, tear: 15, bio: 100, speed: -5, carry: 6 },                        desc: 'Держит и удар, и заражение, но ни в чём не лучший.' });
 
+// ── Броня по каталогу (цепочки 7 ступеней, красные, «Рывок» из БП): см. data/armor.js ──
+for (const d of ARMOR_DEFS) add(d);
+
 // ── Рюкзаки и сумки (weightBonus — прибавка к переносимому весу; размер сетки инвентаря от них не зависит) ──
 add({ id: 'bp_1', owner: 'locked',  name: 'Старый рюкзак',  type: 'backpack', slot: 'backpack', w: 3, h: 3, weight: 1.5, price: 400, weightBonus: 18, stats: { speed: -2 }, desc: 'Даёт много переносимого веса, но заметный и тяжёлый.' });
 add({ id: 'bag_1', owner: 'locked', name: 'Поясная сумка',  type: 'backpack', slot: 'backpack', w: 2, h: 1, weight: 0.5, price: 250, weightBonus: 8, stats: { speed: -1 }, desc: 'Компактная сумка. Немного веса, зато лёгкая.' });
@@ -112,7 +116,7 @@ for (const [type, t] of Object.entries(RES_TYPES)) {
 }
 
 // ── Создание экземпляра предмета ─────────────────────────────
-export const createItem = (id, count = 1, tier = 0) => ({
+export const createItem = (id, count = 1, tier = ITEMS[id]?.tier ?? 0) => ({
   uid: uid(), id, count, tier,
   ...(ITEMS[id]?.durMax ? { dur: ITEMS[id].durMax } : {}), // прочность экземпляра
 });

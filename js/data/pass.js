@@ -1,5 +1,7 @@
 // Боевой пропуск: 25 уровней, один бесплатный трек.
-// Бартерных ресурсов в наградах нет. На 25 уровне — красное оружие или броня (выбор появится с углублённым бартером).
+// Бартерных ресурсов в наградах нет. 1 сезон = 1 предмет: на 25 уровне сезона 1 — красная броня ЭС-7 «Рывок» (data/armor.js).
+// Донат — только скины (см. data/cases.js), статы вещи они не меняют.
+import { BP1_ARMOR_ID } from './armor.js';
 export const PASS_LEVELS = 25;
 export const PASS_SEASON_DAYS = 30;
 
@@ -13,7 +15,7 @@ export const PASS_REWARDS = [
   money(500), item('ammo_sniper', 30), item('anomaly_install', 1), money(600), coupon('purple', 20),
   item('medkit', 5), item('metal_detector', 1), money(800), item('ammo_mg', 100), coupon('red', 25),
   money(1000), item('ammo_shell', 30), item('anomaly_install', 2), money(1500),
-  { type: 'red_gear' },
+  item(BP1_ARMOR_ID, 1),
 ];
 
 // Опыта нужно всё больше: до уровня n+1 — 100 + 25·n
