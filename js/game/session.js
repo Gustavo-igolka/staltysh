@@ -1,8 +1,8 @@
 // Игровая сессия: связывает состояние игрока, симуляцию, рисование, ввод и HUD.
 import { h } from '../core/dom.js';
 import { getState, mutate } from '../core/state.js';
-import { computeStats } from './stats.js';
-import { countAmmo, takeAmmo, applyDeathLoss, addToInventory, hasItem } from './inventory.js';
+import { computeStats, blockedZoneLevel } from './stats.js';
+import { countAmmo, takeAmmo, applyDeathLoss, addToInventory, addToStash, hasItem } from './inventory.js';
 import { createWorld, step, setPlayerStats, damagePlayer, lootStash, setDevZone } from './sim/world.js';
 import { startSiege } from './sim/siege.js';
 import { lootCrate } from './sim/spots.js';
@@ -12,6 +12,7 @@ import { buildGameUI } from '../ui/game.js';
 import { renderInventory } from '../ui/inventory.js';
 import { renderSettings } from '../ui/settings.js';
 import { getItem, ITEM_LIST, RARITY_ORDER, RES_TYPES, resId } from '../data/items.js';
+import { tieredItemDef } from './durability.js';
 import { on } from '../core/events.js';
 import { MAPS } from '../data/maps/index.js';
 
@@ -42,8 +43,8 @@ function devGiveArmor(query, log) {
   const exact = ITEM_LIST().find((d) => d.id === query && d.type === 'armor');
   const def = exact ?? ITEM_LIST().find((d) => d.type === 'armor' && (d.name.toLowerCase().includes(q) || d.id.toLowerCase().includes(q)));
   if (!def) return log(`Броня «${query}» не найдена в базе данных`);
-  const res = mutate((st) => addToInventory(st, { id: def.id, count: 1 })).result ?? {};
-  if (res.ok === false) return log(`Не уместилось в инвентарь (${res.reason ?? 'нет места'})`);
+  const res = mutate((st) => ({ ok: true, added: addToInventory(st, { id: def.id, count: 1 }) }));
+  if (!res.added) return log('Не уместилось в инвентарь: нет свободного места или не хватает веса');
   log(`Выдана броня: ${def.name} (${def.id})`);
 }
 
@@ -70,11 +71,11 @@ function devGiveResources(countStr, log) {
     for (const rarity of RARITY_ORDER) {
       const id = resId(type, rarity);
       if (!getItem(id).name || getItem(id).type === 'junk') continue; // этого сочетания тип×редкость нет в базе
-      const res = mutate((st) => addToStash(st, { id, count })).result ?? {};
-      if (res.ok !== false) added++;
+      mutate((st) => { addToStash(st, { id, count }); return { ok: true }; }); // склад без ограничений по месту
+      added++;
     }
   }
-  log(added ? `На склад: ${count} шт. каждого существующего ресурса (${added} позиций)` : 'Не хватило места на складе');
+  log(`На склад: ${count} шт. каждого существующего ресурса (${added} позиций)`);
 }
 
 function devCheckStats(log) {
