@@ -13,7 +13,7 @@ export function rewardLabel(r) {
   if (r.type === 'money') return `¤ ${fmt(r.amount)}`;
   if (r.type === 'item') return `${getItem(r.id).name} ×${r.count}`;
   if (r.type === 'coupon') return `Скидка ${r.percent}% на ${ACC[r.rarity]} вещь`;
-  return 'Красное оружие или броня на выбор';
+  return '';
 }
 
 export function renderPass(root) {
@@ -32,7 +32,7 @@ export function renderPass(root) {
       const lvl = i + 1;
       const claimed = s.pass.claimed.includes(lvl);
       const open = lvl <= p.level;
-      const key = r.type === 'coupon' ? r.rarity : r.type === 'red_gear' ? 'red' : 'grey';
+      const key = r.type === 'coupon' ? r.rarity : r.type === 'item' && getItem(r.id).type === 'armor' ? 'red' : 'grey';
       return h('div', { class: 'row pass-row' + (claimed ? ' done' : open ? ' open' : ''), style: { '--rc': rarityCss(key) } },
         h('span', { class: 'lvl' }, lvl),
         h('div', { class: 'row-main' }, h('b', null, rewardLabel(r))),
@@ -41,7 +41,7 @@ export function renderPass(root) {
             : open ? h('button', { class: 'btn small', onclick: () => {
                 const res = mutate((st) => claimPassReward(st, lvl));
                 if (!res.ok) return toast(res.msg, 'warn');
-                toast(res.reward.type === 'red_gear' ? 'Выбор красной вещи откроется вместе с углублённым бартером — награда сохранена' : `Получено: ${rewardLabel(res.reward)}`, 'ok');
+                toast(`Получено: ${rewardLabel(res.reward)}${res.reward.type === 'item' ? ' (на складе)' : ''}`, 'ok');
               } }, 'Забрать')
             : h('small', { class: 'muted' }, 'Закрыто')));
     })));

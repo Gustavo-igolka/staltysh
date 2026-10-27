@@ -1,12 +1,12 @@
 import { h } from '../core/dom.js';
 import { getState, mutate } from '../core/state.js';
 import { getItem, RARITY, RES_TYPES, GEAR_RESOURCES, TIERS } from '../data/items.js';
-import { BARTER_TABS } from '../data/barter.js';
-import { buyBarterItem, ownedCount, upgradeTarget, upgradeCost, upgradeBarterItem, countOwned } from '../game/economy.js';
-import { effectiveItem } from '../game/durability.js';
+import { BARTER_TABS, isExplicitBranch } from '../data/barter.js';
+import { buyBarterItem, ownedCount } from '../game/economy.js';
 import { fmt, fmtKg } from '../core/util.js';
-import { chips, statLine, rarityCss, rarityName, tierPips, refresh } from './common.js';
+import { chips, statLine, rarityCss, refresh } from './common.js';
 import { openSheet } from './sheet.js';
+import { branchTree } from './barter-tree.js';
 import { toast } from './toast.js';
 
 let tabId = 'weapon';
@@ -19,7 +19,7 @@ export function renderBarter(root) {
 
   root.append(
     h('h2', { class: 'screen-title' }, 'Бартер'),
-    h('p', { class: 'muted' }, 'Первое слабое оружие, броня и сумка покупаются за деньги. Дальше вещь улучшается: старая вещь + деньги + бартерные ресурсы нужной редкости.'),
+    h('p', { class: 'muted' }, 'Белую вещь можно просто купить. Каждая следующая стоит денег, бартерных ресурсов её редкости и предыдущей вещи со склада (она тратится). Покупать можно сколько угодно раз, конец цепочки — красная.'),
     h('button', { class: 'btn small ghost', onclick: showResources }, 'Бартерные ресурсы'),
     chips(BARTER_TABS.map((t) => [t.id, t.name]), tab.id, (v) => { tabId = v; refresh(); }),
     chips(tab.sections.map((x) => [x.id, x.name]), section.id, (v) => { sectionByTab[tab.id] = v; refresh(); }),
@@ -29,20 +29,21 @@ export function renderBarter(root) {
 
 function branchCard(s, branch) {
   const id = branch.chain[0];
+  // Ветка с отдельным предметом на каждой ступени — дерево. Остальные (оружие, сумки) — одна вещь с кнопкой «Купить».
+  if (isExplicitBranch(id)) {
+    return h('section', { class: 'panel branch' },
+      h('h3', { class: 'panel-title' }, `Ветка «${branch.name}»`),
+      branchTree(s, id));
+  }
   const base = getItem(id);
   const owned = ownedCount(s, id);
-  const target = upgradeTarget(s, id); // экипированная вещь или лучшая копия на складе — то, что апгрейдится
-  const tier = target ? (target.tier ?? 0) : null;
-  const d = target ? effectiveItem(target) : base; // показываем статы с учётом ступени, если вещь уже есть
-  const maxed = tier !== null && tier >= TIERS.length - 1;
-
   return h('section', { class: 'panel branch' },
     h('h3', { class: 'panel-title' }, `Ветка «${branch.name}»`),
     h('div', { class: 'row' },
       h('div', { class: 'row-main' },
-        h('b', null, d.name, tier ? h('small', null, ` · ${rarityName(TIERS[tier])}`) : null),
-        h('small', null, [statLine(d), `масса ${fmtKg(d.weight)} кг`, owned ? `у тебя: ${owned}` : null].filter(Boolean).join(' · ')),
-        h('small', { class: 'desc' }, d.desc)),
+        h('b', null, base.name),
+        h('small', null, [statLine(base), `масса ${fmtKg(base.weight)} кг`, owned ? `у тебя: ${owned}` : null].filter(Boolean).join(' · ')),
+        h('small', { class: 'desc' }, base.desc)),
       h('div', { class: 'row-act' },
         h('button', {
           class: 'btn small primary', disabled: s.wallet.money < base.price,
@@ -50,30 +51,7 @@ function branchCard(s, branch) {
             const r = mutate((st) => buyBarterItem(st, id));
             toast(r.ok ? `Куплено: ${base.name}. Предмет лежит на складе` : r.msg, r.ok ? 'ok' : 'warn');
           },
-        }, `Купить · ${fmt(base.price)}`))),
-    h('div', { class: 'ladder' },
-      tierPips(tier ?? -1),
-      upgradeRow(s, id, target, tier, maxed)));
-}
-
-function upgradeRow(s, id, target, tier, maxed) {
-  if (!target) return h('small', null, 'Купи первую (серую) ступень — дальше её можно улучшать на складе бартерными ресурсами.');
-  if (maxed) return h('small', null, 'Максимальная ступень достигнута.');
-  const nextTier = tier + 1;
-  const cost = upgradeCost(id, nextTier);
-  const haveMoney = s.wallet.money >= cost.money;
-  const missing = cost.resources.filter((r) => countOwned(s.stash, r.id) < r.amount);
-  const canAfford = haveMoney && missing.length === 0;
-  const costText = [`${fmt(cost.money)} монет`, ...cost.resources.map((r) => `${r.amount}× ${RES_TYPES[r.type].name} (${countOwned(s.stash, r.id)}/${r.amount})`)].join(' · ');
-  return h('div', { class: 'upgrade-row' },
-    h('small', null, `До ступени «${rarityName(TIERS[nextTier])}»: ${costText}`),
-    h('button', {
-      class: 'btn small ghost', disabled: !canAfford,
-      onclick: () => {
-        const r = mutate((st) => upgradeBarterItem(st, id));
-        toast(r.ok ? `Улучшено до ступени «${rarityName(TIERS[r.tier])}»` : r.msg, r.ok ? 'ok' : 'warn');
-      },
-    }, 'Улучшить'));
+        }, `Купить · ${fmt(base.price)}`))));
 }
 
 function showResources() {

@@ -158,3 +158,24 @@
 .warn-text { color: #ff9c8c; font-size: 12.5px; margin: 0 0 6px; }
 .owner-icon { font-style: normal; font-size: 11px; opacity: .85; }
 .owner-icon.inline { margin-left: 4px; }
+
+/* Дерево бартера */
+.btree-wrap { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.btree-scroll { overflow-x: auto; overflow-y: hidden; padding-bottom: 8px; -webkit-overflow-scrolling: touch; }
+.btree { display: block; max-width: none; }
+.btree-line { fill: none; stroke: #2b3631; stroke-width: 2; stroke-dasharray: 3 4; }
+.btree-line.open { stroke: #5b6b63; }
+.btree-line.lit { stroke: var(--accent); stroke-dasharray: none; }
+.btree-node { cursor: pointer; outline: none; }
+.btree-node .card { fill: #151c19; stroke: var(--rc); stroke-width: 1.5; }
+.btree-node text { fill: #d8e0dc; font-size: 11px; font-family: inherit; pointer-events: none; }
+.btree-node .n1 { font-weight: 600; }
+.btree-node .n2 { fill: var(--muted, #8b9a93); font-size: 10px; }
+.btree-node .btn { fill: #2a2412; stroke: var(--accent); stroke-width: 1; }
+.btree-node .n3 { fill: var(--accent); font-size: 10px; }
+.btree-node.locked { opacity: .5; }
+.btree-node.locked .btn { fill: #1a201d; stroke: #2b3631; }
+.btree-node.locked .n3 { fill: var(--muted, #8b9a93); }
+.btree-node.have .card { fill: #1d2a23; }
+.btree-node .n4 { fill: #8fd3a8; font-size: 11px; font-weight: 600; }
+.btree-node:focus-visible .card { stroke: #fff; }
