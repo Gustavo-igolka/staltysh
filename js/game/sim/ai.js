@@ -11,6 +11,32 @@ export const AI_TICK = 0.35;
 const rnd = (a, b) => a + Math.random() * (b - a);
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
+// ── защита от застревания в стенах ──
+// Ближайшая свободная для тела радиуса r точка (проверяем кольцами вокруг x, y)
+export function nearestFree(map, x, y, r) {
+  if (!collides(map, x, y, r)) return { x, y };
+  for (let ring = 1; ring <= 12; ring++) {
+    const d = ring * TILE * 0.5;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const px = x + Math.cos(a) * d, py = y + Math.sin(a) * d;
+      if (!collides(map, px, py, r)) return { x: px, y: py };
+    }
+  }
+  return { x, y };
+}
+
+// Можно ли пройти прямо телом радиуса r. В отличие от hasLineOfSight учитывает воду и всё непроходимое,
+// а не только то, что блокирует пули.
+function walkClear(map, x0, y0, x1, y1, r) {
+  const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (TILE * 0.4)));
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    if (collides(map, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, r)) return false;
+  }
+  return true;
+}
+
 function varied(base, pct) {
   const k = 1 + rnd(-pct, pct) / 100;
   return Math.round(base * k * 100) / 100;
@@ -18,13 +44,14 @@ function varied(base, pct) {
 
 export function spawnNpc(world, kindId, x, y, home) {
   const k = ENEMY_KINDS[kindId];
+  ({ x, y } = nearestFree(world.map, x, y, k.r)); // случайная точка могла попасть в дерево/руины/воду
   const npc = {
     id: world.nextId++, kindId, x, y, angle: 0,
     r: k.r, hp: varied(k.hp, k.variancePct), maxHp: 0,
     moveSpeed: varied(k.moveSpeed, k.variancePct),
     dead: false, corpseT: 0, flash: 0, slowT: 0, slow: 0, bleedT: 0, bleedAcc: 0,
     state: 'patrol', stateT: 0, fleeT: 0, repositionT: rnd(0, k.ranged?.reposition ?? 3),
-    home, path: null, pathIdx: 0, repathT: 0, wanderGoal: null,
+    home, path: null, pathIdx: 0, repathT: 0, wanderGoal: null, stuckT: 0,
     cooldown: rnd(0, 1 / (k.ranged?.rate ?? k.melee?.rate ?? 1)),
     siegeTarget: null,
   };
@@ -37,16 +64,20 @@ function kindOf(npc) { return ENEMY_KINDS[npc.kindId]; }
 
 function pickWanderGoal(world, npc) {
   const home = npc.home;
-  const ang = rnd(0, Math.PI * 2);
-  const r = rnd(home.radius * 0.3, home.radius);
-  return { x: home.x + Math.cos(ang) * r, y: home.y + Math.sin(ang) * r };
+  for (let i = 0; i < 8; i++) {
+    const ang = rnd(0, Math.PI * 2);
+    const r = rnd(home.radius * 0.3, home.radius);
+    const g = { x: home.x + Math.cos(ang) * r, y: home.y + Math.sin(ang) * r };
+    if (!collides(world.map, g.x, g.y, npc.r)) return g;
+  }
+  return nearestFree(world.map, home.x, home.y, npc.r);
 }
 
 function followPath(world, npc, dt, goal) {
   // перестраиваем путь изредка, а не каждый кадр
   npc.repathT -= dt;
-  const hasLos = hasLineOfSight(world.map, npc.x, npc.y, goal.x, goal.y);
-  if (hasLos) { npc.path = null; moveToward(world, npc, goal, dt); return; }
+  const clear = walkClear(world.map, npc.x, npc.y, goal.x, goal.y, npc.r);
+  if (clear) { npc.path = null; moveToward(world, npc, goal, dt); return; }
   if (!npc.path || npc.repathT <= 0) {
     npc.repathT = 0.9;
     const cells = findPath(world.map, npc.x, npc.y, goal.x, goal.y);
@@ -71,7 +102,12 @@ function moveToward(world, npc, goal, dt) {
   const speed = npc.moveSpeed * slow;
   const terrain = tileAt(world.map, Math.floor(npc.x / TILE), Math.floor(npc.y / TILE)).speed ?? 1;
   const step = Math.min(len, speed * terrain * dt);
+  const bx = npc.x, by = npc.y;
   moveWithCollision(world.map, npc, (dx / len) * step, (dy / len) * step, npc.r);
+  // антизастревание: хотел идти, а почти не сдвинулся — сбрасываем путь и цель, пусть выберет новые
+  const moved = Math.hypot(npc.x - bx, npc.y - by);
+  npc.stuckT = step > 0.5 && moved < step * 0.25 ? (npc.stuckT ?? 0) + dt : 0;
+  if (npc.stuckT > 0.8) { npc.stuckT = 0; npc.path = null; npc.wanderGoal = null; npc.repathT = 0; }
 }
 
 function fireAt(world, npc, target, k) {
@@ -87,6 +123,13 @@ function fireAt(world, npc, target, k) {
 
 export function stepNpc(world, npc, dt, player) {
   if (npc.dead) { npc.corpseT -= dt; return; }
+
+  // страховка: если НПС всё же оказался внутри препятствия — вытаскиваем в ближайшую свободную точку
+  if (collides(world.map, npc.x, npc.y, npc.r)) {
+    const f = nearestFree(world.map, npc.x, npc.y, npc.r);
+    npc.x = f.x; npc.y = f.y; npc.path = null;
+  }
+
   const k = kindOf(npc);
   if (npc.flash > 0) npc.flash -= dt;
   if (npc.slowT > 0) npc.slowT -= dt;
@@ -124,7 +167,7 @@ export function stepNpc(world, npc, dt, player) {
     if (!npc.wanderGoal || dist(npc, npc.wanderGoal) < TILE) npc.wanderGoal = pickWanderGoal(world, npc);
     followPath(world, npc, dt, npc.wanderGoal);
   } else if (npc.state === 'flee') {
-    const away = { x: npc.x + (npc.x - player.x), y: npc.y + (npc.y - player.y) };
+    const away = nearestFree(world.map, npc.x + (npc.x - player.x), npc.y + (npc.y - player.y), npc.r);
     followPath(world, npc, dt, away);
   } else if (npc.state === 'chase') {
     followPath(world, npc, dt, player);
