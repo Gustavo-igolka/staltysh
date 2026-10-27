@@ -23,7 +23,8 @@ export function defaultState(nickname = 'Выживший') {
     pass: { season: 1, xp: 0, claimed: [], coupons: [], pendingRedChoice: false },
     skins: [],      // открытые косметические скины (донатные кейсы), на статы не влияют
     skinSel: {},    // какой скин надет на какую вещь: { id вещи: id скина }
-    settings: { sound: true, music: true, controls: 'auto', quality: 'high', dev: false },
+    // keys — переназначенные клавиши { действие: код клавиши }, недостающие берутся из DEFAULT_KEYS (game/input.js)
+    settings: { sound: true, music: true, controls: 'auto', quality: 'high', dev: false, keys: {}, autoAim: true },
   };
 }
 
