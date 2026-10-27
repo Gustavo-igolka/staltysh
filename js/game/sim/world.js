@@ -11,6 +11,9 @@ import { stepSiege } from './siege.js';
 
 export const SIM = {
   playerRadius: 10,
+  npcSeparationPad: 2,       // запас (пикселей) сверх суммы радиусов, чтобы тела врагов не сливались в точку
+  knockbackImpulse: 260,     // «скорость» отбрасывания при попадании пули, пикс/сек
+  knockbackDecay: 8,         // насколько быстро затухает импульс отбрасывания (1/сек)
   baseSpeed: 4.6 * TILE,     // пикселей в секунду при скорости 100%
   bulletSpeed: 1000,
   wearPerShot: 0.1,          // потеря прочности оружия за выстрел
@@ -127,8 +130,63 @@ export function step(world, dt) {
   stepSpots(world, dt);
   stepSiege(world, dt);
   world.npcs = world.npcs.filter((n) => !n.dead || n.corpseT > -CORPSE_FADE);
+  separateNpcs(world, p1); // расталкивание: враги не должны влезать в игрока и друг в друга
   for (const f of world.floaters) { f.t += dt; f.y -= 26 * dt; }
   world.floaters = world.floaters.filter((f) => f.t < f.life);
+}
+
+// ── разделение тел (separation) ──────────────────────────────
+// Без него собака в «chase» идёт точно в центр игрока: координаты совпадают, пуля спавнится
+// «за» врагом и не может его задеть. Правило: если дистанция меньше суммы радиусов (+pad),
+// выталкиваем вдоль вектор «игрок → враг» ровно на величину перекрытия. То же для пар враг-враг,
+// чтобы отряд не сливался в одну точку. Учитывается только живые НПС; позиции проверяются на
+// столкновение со стенами, чтобы не вталкивать врага в препятствие.
+export function separateNpcs(world, player) {
+  const npcs = world.npcs.filter((n) => !n.dead);
+  // 1) враг ↔ игрок: дистанция меньше (радиус_игрока + радиус_врага) — отталкиваем назад по вектору от игрока
+  if (player && player.alive) {
+    for (const n of npcs) {
+      const dx = n.x - player.x, dy = n.y - player.y;
+      const d = Math.hypot(dx, dy);
+      const need = player.r + n.r + SIM.npcSeparationPad;
+      if (d >= need) continue;
+      pushApart(world, n, player, dx, dy, d, need);
+    }
+  }
+  // 2) враг ↔ враг (стаи собак не должны сливаться в одну точку)
+  for (let i = 0; i < npcs.length; i++) {
+    for (let j = i + 1; j < npcs.length; j++) {
+      const a = npcs[i], b = npcs[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const d = Math.hypot(dx, dy);
+      const need = a.r + b.r + SIM.npcSeparationPad;
+      if (d >= need) continue;
+      // расталкиваем обоих симметрично на половину перекрытия
+      const ux = d > 0.0001 ? dx / d : Math.random() * 2 - 1, uy = d > 0.0001 ? dy / d : Math.random() * 2 - 1;
+      const half = (need - d) / 2;
+      if (!blockedAt(world.map, a.x - ux * half, a.y - uy * half, a.r)) { a.x -= ux * half; a.y -= uy * half; }
+      if (!blockedAt(world.map, b.x + ux * half, b.y + uy * half, b.r)) { b.x += ux * half; b.y += uy * half; }
+    }
+  }
+}
+
+// Вытолкнуть npc из пересечения с other вдоль вектора (dx,dy)=other→npc на величину перекрытия
+function pushApart(world, npc, other, dx, dy, d, need) {
+  // полный overlap (враг ровно в центре игрока) — берём случайное направление, иначе вектор нулевой
+  const ux = d > 0.0001 ? dx / d : Math.cos(npc.angle + Math.PI);
+  const uy = d > 0.0001 ? dy / d : Math.sin(npc.angle + Math.PI);
+  const push = need - d;
+  const nx = npc.x + ux * push, ny = npc.y + uy * push;
+  if (!blockedAt(world.map, nx, ny, npc.r)) { npc.x = nx; npc.y = ny; }
+  else {
+    // упёрся в стену — скользим вдоль неё (пробуем тангенциальные смещения)
+    for (const s of [0.7, -0.7, 0.4, -0.4]) {
+      const tx = -uy, ty = ux;
+      const sx = npc.x + ux * push * 0.5 + tx * push * s, sy = npc.y + uy * push * 0.5 + ty * push * s;
+      if (!blockedAt(world.map, sx, sy, npc.r)) { npc.x = sx; npc.y = sy; break; }
+    }
+  }
+  npc.separateT = world.t; // отметка для ИИ: в этом кадре нас растолкали, цель можно скорректировать
 }
 
 function drainMeleeQueue(world) {
@@ -318,6 +376,8 @@ function fire(world, p, w) {
     id: world.nextId++, x: p.x + Math.cos(ang) * (p.r + 6), y: p.y + Math.sin(ang) * (p.r + 6),
     vx: Math.cos(ang) * SIM.bulletSpeed, vy: Math.sin(ang) * SIM.bulletSpeed,
     dmg: s.dmg, range: s.range * TILE, dist: 0, owner: p.id,
+    r: s.bulletR ?? 1.5, // радиус пули для хитбокса (у дроби крупнее — задаётся в статах оружия)
+    knockback: s.knockback ?? SIM.knockbackImpulse, // импульс отбрасывания цели (настраивается статом knockback у оружия)
     bleed: s.bleedChance ?? 0, stop: s.stop ?? 0, mutMult: s.mutantMult ?? 1,
   });
   w.mag -= 1;
@@ -333,6 +393,10 @@ function fire(world, p, w) {
 function stepBullets(world, dt) {
   const keep = [];
   for (const b of world.bullets) {
+    // шаг пули: сегмент из текущей точки в новую. Хитбокс — сам сегмент (swept-проверка segCircle),
+    // поэтому пересечение с врагом ловится и в НАЧАЛЕ пути (первый же кадр после спавна: отрезок
+    // стартует прямо у дула, и если враг уже вплотную — попадание засчитывается до перемещения),
+    // и «through» на высоких скоростях (пуля не телепортируется сквозь тела за один кадр).
     const nx = b.x + b.vx * dt, ny = b.y + b.vy * dt;
     const stepLen = Math.hypot(b.vx, b.vy) * dt;
     if (tileAt(world.map, Math.floor(nx / TILE), Math.floor(ny / TILE)).blocksBullets) continue;
@@ -347,11 +411,12 @@ function stepBullets(world, dt) {
     } else {
       for (const d of world.dummies) {
         if (d.dead) continue;
-        if (segCircle(b.x, b.y, nx, ny, d.x, d.y, d.r)) { hitEntity(world, d, b, true); hit = true; break; }
+        if (segCircle(b.x, b.y, nx, ny, d.x, d.y, d.r + (b.r ?? 0))) { hitEntity(world, d, b, true); hit = true; break; }
       }
       if (!hit) for (const n of world.npcs) {
         if (n.dead) continue;
-        if (segCircle(b.x, b.y, nx, ny, n.x, n.y, n.r)) { hitEntity(world, n, b, false); hit = true; break; }
+        // радиус цели + радиус пули: толстая пуля (дробь) цепляет раньше тонкой
+        if (segCircle(b.x, b.y, nx, ny, n.x, n.y, n.r + (b.r ?? 0))) { hitEntity(world, n, b, false); hit = true; break; }
       }
     }
     if (hit) continue;
@@ -367,6 +432,14 @@ function hitEntity(world, e, b, isDummy) {
   const dmg = Math.round(b.dmg * mult);
   e.hp -= dmg; e.flash = 0.12;
   floater(world, e.x, e.y - e.r - 4, String(dmg), mult > 1 ? '#ffb347' : '#ffffff');
+  // knockback: импульс вдоль вектора полёта пули, затухает экспоненциально (см. applyKnockback в ai.js).
+  // Лёгкие weapons слабее отбрасывают; мутанты тяжелее — множитель по виду (dog летит дальше boar).
+  if (!isDummy && e.kbMass) {
+    const kb = (b.knockback ?? SIM.knockbackImpulse) / e.kbMass;
+    const bl = Math.hypot(b.vx, b.vy) || 1;
+    e.kbx = (e.kbx ?? 0) + (b.vx / bl) * kb;
+    e.kby = (e.kby ?? 0) + (b.vy / bl) * kb;
+  }
   if (b.stop) { e.slowT = SIM.stopTime; e.slow = b.stop / 100; }
   if (b.bleed && Math.random() * 100 < b.bleed) { e.bleedT = SIM.bleedTime; e.bleedAcc = 0; floater(world, e.x + 8, e.y, 'кровь', '#ff6b5e', 0.8); }
   if (e.hp <= 0) (isDummy ? killDummy(world, e) : killNpc(world, e));

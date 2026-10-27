@@ -3,7 +3,7 @@
 // применяются каждый кадр в stepNpc() на основе уже выбранного состояния.
 import { TILE, tileAt } from '../../data/tiles.js';
 import { ENEMY_KINDS } from '../../data/enemies.js';
-import { blockedAt as collides, moveWithCollision } from './world.js';
+import { blockedAt as collides, moveWithCollision, SIM } from './world.js';
 import { findPath, pathToWorld, hasLineOfSight } from './pathfind.js';
 
 export const AI_TICK = 0.35;
@@ -50,6 +50,7 @@ export function spawnNpc(world, kindId, x, y, home) {
     r: k.r, hp: varied(k.hp, k.variancePct), maxHp: 0,
     moveSpeed: varied(k.moveSpeed, k.variancePct),
     dead: false, corpseT: 0, flash: 0, slowT: 0, slow: 0, bleedT: 0, bleedAcc: 0,
+    kbMass: k.kbMass ?? 1, kbx: 0, kby: 0, // масса для knockback: dog ~1 (легко летит), boar ~2.5 (слабее сдвиг)
     state: 'patrol', stateT: 0, fleeT: 0, repositionT: rnd(0, k.ranged?.reposition ?? 3),
     home, path: null, pathIdx: 0, repathT: 0, wanderGoal: null, stuckT: 0,
     cooldown: rnd(0, 1 / (k.ranged?.rate ?? k.melee?.rate ?? 1)),
@@ -58,6 +59,18 @@ export function spawnNpc(world, kindId, x, y, home) {
   npc.maxHp = npc.hp;
   world.npcs.push(npc);
   return npc;
+}
+
+// ── отбрасывание (knockback) ─────────────────────────────────
+// Импульс npc.kbx/kby задаётся в hitEntity() (world.js) при попадании пули и затухает экспоненциально.
+// Применяется каждый кадр с проверкой стен — врага не должно засовывать в препятствие ударом.
+const KNOCKBACK_DECAY = 8; // согласовано с SIM.knockbackDecay в world.js
+export function applyKnockback(world, npc, dt) {
+  if (!npc.kbx && !npc.kby) return;
+  moveWithCollision(world.map, npc, npc.kbx * dt, npc.kby * dt, npc.r);
+  const decay = Math.exp(-KNOCKBACK_DECAY * dt);
+  npc.kbx *= decay; npc.kby *= decay;
+  if (Math.hypot(npc.kbx, npc.kby) < 4) { npc.kbx = 0; npc.kby = 0; } // погасили мелкий хвост полностью
 }
 
 function kindOf(npc) { return ENEMY_KINDS[npc.kindId]; }
@@ -124,6 +137,8 @@ function fireAt(world, npc, target, k) {
 export function stepNpc(world, npc, dt, player) {
   if (npc.dead) { npc.corpseT -= dt; return; }
 
+  applyKnockback(world, npc, dt); // отбрасывание от попаданий — до ИИ-движения, чтобы удар не «съедался» шагом к цели
+
   // страховка: если НПС всё же оказался внутри препятствия — вытаскиваем в ближайшую свободную точку
   if (collides(world.map, npc.x, npc.y, npc.r)) {
     const f = nearestFree(world.map, npc.x, npc.y, npc.r);
@@ -170,7 +185,11 @@ export function stepNpc(world, npc, dt, player) {
     const away = nearestFree(world.map, npc.x + (npc.x - player.x), npc.y + (npc.y - player.y), npc.r);
     followPath(world, npc, dt, away);
   } else if (npc.state === 'chase') {
-    followPath(world, npc, dt, player);
+    // не впираемся в игрока: держим дистанцию «сумма радиусов + запас» — иначе координаты совпадают
+    // и пуля, спавнящаяся у дула, оказывается «за» врагом. separation (world.js) — второй страховочный слой.
+    const minGap = player.r + npc.r + SIM.npcSeparationPad;
+    if (dist(npc, player) > minGap * 1.05) followPath(world, npc, dt, player);
+    else npc.angle = Math.atan2(player.y - npc.y, player.x - npc.x); // уже вплотную — просто стоим и смотрим на цель
     if (k.melee && dist(npc, player) <= k.melee.range && npc.cooldown <= 0) {
       world.meleeQueue.push({ npcId: npc.id, dmg: k.melee.dmg, dmgType: k.dmgType });
       npc.cooldown = 1 / k.melee.rate;
