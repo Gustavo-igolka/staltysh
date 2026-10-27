@@ -49,6 +49,7 @@ export function createWorld({ map, host, snapshot, arrive }) {
     players: {}, bullets: [], dummies: [], floaters: [], events: [], nextId: 1,
     hatch: null, transitions: [], markers: [], stashes: [],
     npcs: [], meleeQueue: [], siege: null, camera: null, // ИИ/споты/осада; camera ставится снаружи (session.js)
+    devZones: [], // искусственные зоны от консоли разработчика (hazard ...)
   };
   for (const o of map.objects) {
     if (o.type === 'hatch') world.hatch = { ...toPx(o), label: o.label };
@@ -311,12 +312,22 @@ export function lootStash(world, stashId) {
   return rollStashLoot(world, stash);
 }
 
+// Искусственная тестовая зона вокруг точки (консоль разработчика: hazard rad 300).
+// level в очках заражения (0–400, как у natural зон); радиус в тайлах. level=0 — зона убирается.
+export function setDevZone(world, type, level, x, y, radiusTiles = 12) {
+  world.devZones ??= [];
+  world.devZones = world.devZones.filter((z) => z.type !== type);
+  if (level > 0) world.devZones.push({ dev: true, name: `Тест: ${type}`, type, level, r: radiusTiles, x, y });
+}
+
 // Текущая зона заражения под игроком (если он внутри нескольких — берём самую опасную по уровню)
 function zoneAt(world, x, y) {
   const zones = world.map.zones;
-  if (!zones) return null;
+  // dev-зоны консоли разработчика добавляются к карте без мутации данных карты
+  const all = world.devZones?.length ? [...(zones ?? []), ...world.devZones] : zones;
+  if (!all || !all.length) return null;
   let best = null;
-  for (const z of zones) {
+  for (const z of all) {
     const dx = x - z.x * TILE, dy = y - z.y * TILE;
     if (dx * dx + dy * dy <= (z.r * TILE) ** 2 && (!best || z.level > best.level)) best = z;
   }
@@ -472,8 +483,16 @@ function stepDummies(world, dt) {
 }
 
 // ── урон игроку (пригодится, когда появятся враги; сейчас вызывается из инструментов разработчика) ──
+// type: 'bullet' | 'tear' | 'blast' — считаются через пул брони; 'true' — чистый урон в обход брони.
 export function damagePlayer(world, p, type, amount) {
   if (!p.alive) return;
+  if (type === 'true') { // обход пулов и износа брони: прямо по здоровью
+    p.hp = Math.max(0, p.hp - amount);
+    p.lastDamageT = world.t;
+    floater(world, p.x, p.y - p.r - 6, `-${Math.round(amount)} true`, '#ffd75e');
+    if (p.hp <= 0) { p.alive = false; world.events.push({ type: 'death', pid: p.id }); }
+    return;
+  }
   const pool = p.stats.pools[type] ?? p.stats.pools.bullet;
   p.hp = Math.max(0, p.hp - (amount / pool) * p.stats.health); // доля запаса против этого типа урона = доля здоровья
   p.lastDamageT = world.t;
