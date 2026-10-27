@@ -44,8 +44,9 @@ export function buildGameUI({ touch, dev }) {
   // пауза
   const pauseLayer = h('div', { class: 'pause-layer', hidden: true });
 
-  // инструменты разработчика
+  // инструменты разработчика: devBox — кнопки-сниппеты, devout — вывод текстовых команд консоли
   const devBox = dev ? h('div', { class: 'devbox' }) : null;
+  const devOut = dev ? h('pre', { class: 'devout' }) : null;
 
   // полноэкранный оверлей (инвентарь/настройки/карта) поверх идущей игры
   const overlayHead = h('h2', null);
@@ -62,7 +63,7 @@ export function buildGameUI({ touch, dev }) {
 
   let toastT = null;
   return {
-    el, canvas, pauseBtn, btnInv, btnMap, prompt, btnFire, btnReload, btnSwap, btnHeal, devBox, pauseLayer,
+    el, canvas, pauseBtn, btnInv, btnMap, prompt, btnFire, btnReload, btnSwap, btnHeal, devBox, devOut, pauseLayer,
     zones: { move: zoneMove, aim: zoneAim },
 
     openOverlay(title, render, onClose) {

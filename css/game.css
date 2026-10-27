@@ -71,6 +71,10 @@
 .devbox { position: absolute; left: calc(12px + env(safe-area-inset-left, 0px)); top: 56px; display: flex; flex-direction: column; gap: 4px; z-index: 2; }
 .devbox button { pointer-events: auto; font-size: 11px; padding: 4px 8px; background: rgba(20, 28, 25, .75); border: 1px solid var(--line2); }
 .game.touch .devbox { top: 112px; }
+/* консоль разработчика: строка ввода команд + вывод результата */
+.devrow { display: flex; gap: 4px; pointer-events: auto; }
+.devcmd { flex: 1; min-width: 180px; font-size: 11px; padding: 4px 8px; background: rgba(20, 28, 25, .85); border: 1px solid var(--line2); color: var(--fg, #dfe7df); }
+.devout { margin: 0; max-width: 340px; max-height: 160px; overflow: auto; white-space: pre-wrap; font-size: 11px; line-height: 1.35; color: #9fd8a8; background: rgba(12, 18, 14, .8); border: 1px solid var(--line2); padding: 4px 8px; pointer-events: auto; }
 
 /* Оверлей инвентаря/настроек/карты поверх идущей игры */
 .game-overlay { position: absolute; inset: 0; z-index: 4; background: var(--bg, #0b0f0d); display: flex; flex-direction: column; pointer-events: auto; }

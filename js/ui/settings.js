@@ -1,6 +1,6 @@
 import { h } from '../core/dom.js';
 import { getState, mutate, setState, defaultState } from '../core/state.js';
-import { session, GUEST_FLAG } from '../core/session.js';
+import { session, GUEST_FLAG, isDev } from '../core/session.js';
 import { cloudEnabled } from '../net/supabase.js';
 import { signOut, ensureProfile } from '../net/auth.js';
 import { ITEM_LIST, getItem } from '../data/items.js';
@@ -111,9 +111,26 @@ export function renderSettings(root) {
         setState(defaultState(getState().nickname));
         toast('Прогресс сброшен');
       }) }, 'Сбросить прогресс')),
-    section('Для разработки',
-      toggle('Режим разработчика', s.settings.dev, (v) => set({ dev: v })),
-      s.settings.dev ? devTools() : null));
+    // Секция разработчика — только для аккаунтов из белого списка DEV_EMAILS (js/core/session.js).
+    // Обычные игроки её не видят: вместо текстового ввода — одна кнопка вкл/выкл девмода.
+    isDev() ? devSection(set) : null);
+}
+
+// Кнопка-переключатель «Режим разработчика»: включил — в открытом мире появились dev-панель
+// и консоль команд; выключил — чистая игра. Никакого текста в меню вводить не нужно.
+function devSection(set) {
+  const on = getState().settings.dev;
+  const btn = h('button', { class: 'btn ' + (on ? 'danger' : 'ghost') },
+    on ? 'Режим разработчика: ВКЛ — выключить' : 'Режим разработчика: ВЫКЛ — включить');
+  btn.onclick = () => {
+    set({ dev: !on });
+    toast(!on ? 'Девмод включён: панель появится в открытом мире' : 'Девмод выключен', 'ok');
+    refresh();
+  };
+  return section('Для разработки',
+    btn,
+    h('p', { class: 'muted small' }, 'Доступно только разработчикам (белый список email в js/core/session.js).'),
+    on ? devTools() : null);
 }
 
 const eachGear = (st, fn) =>
