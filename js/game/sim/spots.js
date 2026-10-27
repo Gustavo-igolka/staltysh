@@ -4,7 +4,7 @@
 import { TILE } from '../../data/tiles.js';
 import { HUMAN_KINDS, MUTANT_KINDS, ENEMY_KINDS } from '../../data/enemies.js';
 import { spawnNpc } from './ai.js';
-import { RES_TYPES, GEAR_RESOURCES, resId } from '../../data/items.js';
+import { getRandomLoot, lootItem } from './loot.js';
 
 export const SPOT_RESPAWN_TIME = 90;
 export const SCATTER_MIN = 3, SCATTER_MAX = 5; // клеток карты
@@ -12,6 +12,12 @@ export const ZONE_RADIUS = 7; // клеток карты — зона патру
 
 const rnd = (a, b) => a + Math.random() * (b - a);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+// Тир локации спота: band по y спота (в клетках). Одна и та же величина используется при спавне
+// отряда и при ролле лута — параметры передаются в функцию явно, а не вычисляются внутри наугад.
+export function spotTier(world, spot) {
+  return world.map.bands.find((b) => spot.y / TILE >= b.fromY)?.rarity ?? 'grey';
+}
 
 export function createSpots(world) {
   const spots = [];
@@ -21,6 +27,7 @@ export function createSpots(world) {
       id: world.nextId++, kind: m.type === 'mutant_spot' ? 'mutant' : 'human',
       x: m.x * TILE, y: m.y * TILE, state: 'alive', alive: [], timer: 0, crate: null,
     };
+    spot.tier = spotTier(world, spot); // фиксируем тир при создании — он не меняется за жизнь точки
     spots.push(spot);
     spawnGroup(world, spot);
   }
@@ -52,18 +59,14 @@ function onScreen(world, spot) {
   return spot.x >= cam.x - pad && spot.x <= cam.x + cam.vw + pad && spot.y >= cam.y - pad && spot.y <= cam.y + cam.vh + pad;
 }
 
+// Лут зачищенной точки: строго по правилам тира и типа спота (см. loot.js).
+// Параметры передаются явно: locationTier = spot.tier, spotType = spot.kind — никаких случайных типов.
 function rollLoot(world, spot) {
-  const rarity = world.map.bands.find((b) => spot.y / TILE >= b.fromY)?.rarity ?? 'grey';
-  const types = GEAR_RESOURCES[rarity] ?? ['mutant', 'human'];
-  const items = [{ id: `j_${pick(['gear', 'wire', 'compass'])}`, count: Math.round(rnd(1, 3)) }];
-  const n = Math.round(rnd(1, 3));
-  for (let i = 0; i < n; i++) {
-    const type = pick(types);
-    // редкость ресурса — редкость самой зоны, если этот тип ресурса вообще её достигает, иначе его низшая
-    const rarities = RES_TYPES[type].rarities;
-    const r = rarities.includes(rarity) ? rarity : rarities[0];
-    items.push({ id: resId(type, r), count: Math.round(rnd(1, 4)) });
-  }
+  const tier = spot.tier ?? spotTier(world, spot);
+  const items = [];
+  // основной ресурс источника + 1-2 дополнительных ролла того же источника
+  const n = Math.round(rnd(2, 3));
+  for (let i = 0; i < n; i++) items.push(lootItem(getRandomLoot(tier, spot.kind)));
   return items;
 }
 
